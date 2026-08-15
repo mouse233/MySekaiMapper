@@ -1,0 +1,356 @@
+# MySekaiMapper
+
+🌐 **Languages**: [简体中文](doc/README.zh-CN.md) · [繁體中文](doc/README.zh-TW.md) · [日本語](doc/README.ja-JP.md) · [한국어](doc/README.ko-KR.md)
+
+A resource-gathering point map generator for the MySekai mode in *Project Sekai* (世界计划 多彩舞台).
+
+**Original intent**: designed to work with MitM modules or Reqable's "Report Server" feature — the capture tool grabs MySekai data packets from the game and automatically uploads them to this service in chunks. The server merges the encrypted saves, decrypts them, extracts the resource drop coordinates of every station, draws gathering maps, and pushes the results (including a rare-resource summary) to the player's Telegram / Bark (iOS Day.app) — no manual intervention required.
+
+Each task produces **4 maps**: `site_5.png` (Empty Lot), `site_6.png` (Wish Beach), `site_7.png` (Flower Field), `site_8.png` (Place of Forgetting), plus a `rare_resources.txt` rare-resource summary.
+
+This project has been tested and verified on the CN and TW servers operated by Nuverse (朝夕光年). Availability on other servers is unknown.
+
+## How it works
+
+```
+Game API response → MitM module / Reqable Report Server (captures mysekai data)
+   │  ① Auto chunked upload → server.py merges automatically (recommended; the original intent)
+   │  ② Or drop a .bin save manually → cli.py generate
+   ▼
+parser.py    AES-128-CBC decrypt + msgpack parse + coordinate rotation
+   ▼
+render.py    Draw site_5.png ~ site_8.png + rare_resources.txt → data/latest/
+   ▼
+notify.py    Push:
+             ├─ Telegram: images uploaded directly as multipart, no public URL needed ← default channel
+             └─ Bark: notified with image= URL links, requires a static file server
+```
+
+## Quick start
+
+First finish the installation and basic `.env` configuration, then pick the path that matches your push setup:
+
+- **Path A (Telegram Bot only)**: fewest configs, recommended to get running first;
+- **Path B (enable Bark push)**: Path A plus Bark keys, player routing, and a static file server.
+
+### 1. Install
+
+```bash
+python -m venv venv
+venv/bin/pip install -r requirements.txt
+# Optional: install the mysekai command (equivalent to python cli.py ...)
+venv/bin/pip install -e .
+```
+
+### 2. Configure .env (required)
+
+```bash
+cp .env.example .env
+```
+
+`AES_KEY` / `AES_IV` are the AES-128-CBC decryption keys for MySekai saves (16 bytes each) — required on every path. The remaining variables depend on your chosen path:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `AES_KEY` / `AES_IV` | ✅ | AES-128-CBC keys for MySekai saves, 16 bytes each |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional* | Needed for Telegram push (default channel); from [@BotFather](https://t.me/BotFather) |
+| `BARK_ICON` | Optional | Icon URL for Bark notifications |
+| `BARK_IMAGE_BASE` | Optional | Root URL of the static file server (for Bark image links; see below) |
+| `FALLBACK_IMAGE_BASE` | Optional | Fallback base URL for image links when `BARK_IMAGE_BASE` is not set |
+
+> \* If you only want Bark notifications: you may leave the Telegram config empty, but you **must route the player to a Bark alias in `config/push_map.json`**, otherwise unconfigured players default to Telegram — and with Telegram unconfigured, only a warning is printed and nothing is pushed.
+
+### 3. Path A: Telegram Bot only (simplest)
+
+Use when: you just want maps and stats in Telegram without setting up anything else.
+
+1. Fill in the Telegram config in `.env` (from [@BotFather](https://t.me/BotFather)):
+
+   ```
+   TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
+   TELEGRAM_CHAT_ID=123456789
+   ```
+
+2. Run it once manually to verify:
+
+   ```bash
+   python cli.py generate <mysekai.bin>
+   python cli.py notify data/latest <task_id>
+   ```
+
+3. Daily use: start the upload service; the capture client (MitM module / Reqable Report Server) uploads chunks per the [Upload API](#upload-api), then maps are generated and pushed automatically:
+
+   ```bash
+   python cli.py server [--host 0.0.0.0] [--port 9478]
+   ```
+
+Path A does **not** need: `config/push_map.json`, `config/bark_map.json`, a static file server, or `BARK_IMAGE_BASE`. Unconfigured players are pushed to Telegram by default.
+
+### 4. Path B: enable Bark push (extra configuration)
+
+On top of Path A (the Telegram config may stay, or be left empty to push only to Bark), set up in order:
+
+1. **Configure Bark keys**: give each alias a device key in `config/bark_map.json` (template: `bark_map.example.json` in the same directory).
+2. **Configure player routing**: route player IDs to Bark aliases in `config/push_map.json`, for example:
+
+   ```json
+   {
+     "1234567890123456789": ["klee"],
+     "1234567890123456790": ["telegram", "klee"]
+   }
+   ```
+
+   ⚠️ **Required**: unconfigured players default to Telegram; if Telegram is also unconfigured, only a warning is printed and nothing is pushed.
+3. **Set up a static file server**: expose the project's `data/` directory as a publicly reachable HTTP(S) service and set `BARK_IMAGE_BASE=https://<domain-or-ip:port>` in `.env`. Otherwise Bark notifications carry no map images (see [Static file server examples](#static-file-server-examples-optional) below).
+4. Verify and use daily the same as Path A (steps 2 and 3).
+
+## Upload API
+
+This endpoint receives the captured mysekai response body, uploaded in chunks to `POST /uploadMySekai` (the same protocol can also be debugged manually with curl). Headers:
+
+| Header | Description |
+| --- | --- |
+| `X-Upload-Id` | Upload task ID (alphanumeric plus `-` / `_`, length 1~64), required |
+| `X-Chunk-Index` | Chunk index, starting at 0, required |
+| `X-Total-Chunks` | Total number of chunks (1~10), required |
+| `X-Original-Url` | The client's original page URL, used to resolve the player ID (e.g. `https://.../user/123456...`); **optional** — if missing, the player ID is recorded as `unknown` |
+| `X-Script-Version` | Client script version; ignored by the server, may be omitted |
+
+The request body is the raw binary chunk data (no multipart needed).
+
+Limits:
+
+- Total file size ≤1MB (`MAX_TOTAL_SIZE`)
+- Single chunk ≤1MB (`MAX_CHUNK_SIZE`, returns 413 if exceeded)
+- Max 10 chunks (`MAX_CHUNKS`)
+
+> Note: with a total cap of only 1MB, **chunk sizes should be well below 1MB to make sense** (e.g. 256KB, so 10 chunks fill the full 1MB). If a client uses 1MB chunks, any file over 1MB gets rejected with 413 starting from the 2nd chunk — effectively degrading to single-chunk uploads.
+
+Responses:
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Chunk received, returns `OK`; when the last chunk arrives, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications. No manual intervention. |
+| `400` | Invalid parameters (bad upload id format, chunk index out of range, total chunks not in 1~10) |
+| `413` | Size limit exceeded (single chunk over 1MB, or cumulative total over 1MB) |
+
+### curl examples
+
+Saves ≤1MB can be uploaded in a single chunk (most common):
+
+```bash
+curl -X POST http://127.0.0.1:9478/uploadMySekai \
+  -H "X-Upload-Id: demo12345" \
+  -H "X-Chunk-Index: 0" \
+  -H "X-Total-Chunks: 1" \
+  -H "X-Original-Url: https://example.com/user/1234567890123456789" \
+  --data-binary @mysekai.bin
+```
+
+Chunked upload (256KB per chunk; up to 10 chunks fill the 1MB limit):
+
+```bash
+file=mysekai.bin
+id=$(openssl rand -hex 5)
+total=$(( ($(wc -c < "$file") + 262143) / 262144 ))
+split -b 262144 -a 2 -d "$file" /tmp/ms_chunk_
+
+i=0
+for c in /tmp/ms_chunk_*; do
+  curl -s -X POST http://127.0.0.1:9478/uploadMySekai \
+    -H "X-Upload-Id: $id" \
+    -H "X-Chunk-Index: $i" \
+    -H "X-Total-Chunks: $total" \
+    -H "X-Original-Url: https://example.com/user/1234567890123456789" \
+    --data-binary @"$c"
+  echo
+  i=$((i + 1))
+done
+rm -f /tmp/ms_chunk_*
+```
+
+A `200 OK` per chunk means it was accepted; once the last chunk arrives, the server starts merging and the rest of the pipeline automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
+
+## Push mechanism
+
+### Telegram Bot by default
+
+- Players not configured in `config/push_map.json` **always default to Telegram**; the same applies when `push_map.json` is missing.
+- Telegram uses the Bot API `sendMediaGroup` to upload the 4 local PNGs directly as multipart — **no public image URL and no static file server needed**; if `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are missing it just prints a warning and skips, without affecting the Bark channel.
+
+### Bark push requires public image links
+
+Images in Bark (Day.app) notifications are **URL links**: `notify.py` encodes the image address into the `image=` parameter sent to `api.day.app`, and the Bark server fetches that image itself. The URL must therefore be **publicly reachable (HTTPS recommended)**, otherwise Bark notifications have no images.
+
+The 4 map links are composed by `notify.py` with this precedence:
+
+```python
+base = image_base or BARK_IMAGE_BASE or FALLBACK_IMAGE_BASE
+image_url = base.rstrip("/") + f"/site_{i}.png"   # i = 5..8
+```
+
+| Scenario | base value | Image link form |
+| --- | --- | --- |
+| Server flow (recommended) | `BARK_IMAGE_BASE` + `/archive/by-id/<user_id>/<timestamp>` | `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<timestamp>/site_{5..8}.png` |
+| Manual CLI push | `BARK_IMAGE_BASE` or `FALLBACK_IMAGE_BASE` | `<base>/site_{5..8}.png` (expose `data/latest/` under `<base>/`) |
+
+> Note: the server flow only composes archive-path links when `BARK_IMAGE_BASE` is configured; with only `FALLBACK_IMAGE_BASE` set, the server pushes `<FALLBACK_IMAGE_BASE>/site_{5..8}.png` links too.
+
+## Static file server examples (optional)
+
+Purpose: expose the `data/archive/` directory as a public URL so the Bark server can fetch the four maps.
+
+**Recommended setup**: point the static server root at the project's `data/`, then set `BARK_IMAGE_BASE=https://<your-domain-or-ip:port>` for automatic mapping:
+
+```
+data/archive/by-id/<user_id>/<timestamp>/site_5.png
+  →  https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<timestamp>/site_5.png
+```
+
+Common examples:
+
+Python built-in (simplest; LAN/testing):
+
+```bash
+python -m http.server 8000 --directory data
+# then set BARK_IMAGE_BASE=http://<server-ip>:8000
+```
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name maps.example.com;
+    # ... ssl certificate config ...
+    root /path/to/MySekaiMapper/data;
+}
+```
+
+Caddy (automatic HTTPS):
+
+```bash
+caddy file-server --root /path/to/MySekaiMapper/data --listen :443
+```
+
+Notes:
+
+- **Don't use `127.0.0.1` / `localhost`** as the link address; the Bark server must be able to reach it. In general, pick a publicly reachable address; LAN IPs only when connectivity is confirmed.
+- **Telegram-only users need no static server at all** — skip this section.
+- Manual `cli.py notify` links carry no archive path: expose `data/latest/` under `BARK_IMAGE_BASE` separately, or point `FALLBACK_IMAGE_BASE` at the output directory (e.g. `FALLBACK_IMAGE_BASE=http://<host>:5500/output` → that server mounts `data/latest/` at `/output`).
+
+## Player push routing (optional)
+
+Create local configs under `config/` as needed (formats follow the `*.example.json` templates in the same directory; these files are `.gitignore`d):
+
+- `push_map.json` — player ID → push method: the value can be `"telegram"`, a Bark alias, `"none"` (no push), or a combination like `["alias", "telegram"]` / `"alias+tg"`. **Unconfigured players default to `telegram`**.
+
+  ```json
+  {
+    "1234567890123456789": ["telegram"],
+    "1234567890123456790": ["telegram", "klee"]
+  }
+  ```
+
+- `bark_map.json` — Bark alias → device key:
+
+  ```json
+  { "klee": "paste-your-bark-key-here" }
+  ```
+
+## FAQ
+
+- **Bark notifications have no images?** Check whether the link is publicly reachable: open `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<timestamp>/site_5.png` in a browser or over cellular data — it should show the image. LAN addresses, `127.0.0.1`, or HTTPS with certificate problems all make the fetch fail.
+- **Nothing was pushed?** Check whether `push_map.json` sets that player to `"none"`; whether Bark-only users forgot to assign a Bark alias to the player (unconfigured players default to Telegram); whether the Telegram channel has a token and chat id; whether the Bark channel lacks a key (look for `[BARK] ... failed` in the logs).
+- **Don't want Bark, only Telegram?** Nothing to do — unconfigured players already default to Telegram.
+
+## CLI (cli.py)
+
+Everything can be driven through `cli.py`; after installing (`pip install -e .`), the equivalent `mysekai` command is also available. Commands exit with 0 on success and 1 on error (errors print to stderr).
+
+```bash
+python cli.py --help           # subcommand overview
+python cli.py <command> --help # show a subcommand's arguments
+```
+
+### generate — decrypt a save and generate maps
+
+```bash
+python cli.py generate <mysekai_bin>
+```
+
+- `<mysekai_bin>`: path to the encrypted save (.bin), required
+- Flow: AES-128-CBC decrypt → msgpack parse → extract drop coordinates → draw 4 maps (`site_5.png` ~ `site_8.png`) → write `rare_resources.txt`
+- Output goes to `data/latest/`; the actual path is printed at the end
+- Requirements: `AES_KEY` / `AES_IV` configured in `.env`; exits with an error if the save contains no drop points
+
+### notify — push maps and stats
+
+```bash
+python cli.py notify <output_dir> [task_id]
+```
+
+- `<output_dir>`: directory containing `site_*.png` and `rare_resources.txt` (usually `data/latest/`)
+- `[task_id]`: optional upload task ID, defaults to `unknown`. Used to look up the player ID from `data/raw_mysekai/`: it first tries to match `mysekai_<playerID>_<task_id>.bin`, otherwise falls back to the newest save in raw_mysekai
+- Telegram vs Bark is decided by the routing in `config/push_map.json` (unconfigured players default to Telegram); see [Player push routing](#player-push-routing-optional)
+
+### server — start the chunked upload service
+
+```bash
+python cli.py server [--host 0.0.0.0] [--port 9478]
+```
+
+- Starts the FastAPI service; clients chunk-upload encrypted saves to `POST /uploadMySekai` (protocol details: [Upload API](#upload-api))
+- When all chunks arrive, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications per player routing. No manual intervention.
+- Listens on `9478` by default; for public deployment, expose it as HTTPS via a reverse proxy — the hardcoded upload URL (including the port) in your client script must match your actual deployment
+
+### Typical manual flow
+
+```bash
+python cli.py generate mysekai_xxx.bin       # 1. generate maps to data/latest/
+python cli.py notify data/latest <task_id>   # 2. push (task_id = upload ID, e.g. chfto53c3)
+```
+
+## Directory structure
+
+```
+├── app/                       # core package
+│   ├── config.py              # centralized paths / env vars / local config
+│   ├── crypto.py              # MySekai save AES-128-CBC decryption
+│   ├── parser.py              # msgpack parsing + station coordinate rotation (pure functions)
+│   ├── render.py              # extract drop points → matplotlib drawing + rare-resource stats
+│   ├── notify.py              # push: Telegram media groups / Bark, per-player routing
+│   ├── server.py              # FastAPI chunked upload service
+│   └── cli.py                 # CLI entry
+├── assets/                    # static assets (committed to the repo)
+│   ├── resourceId.csv         # item ID → name + icon (base64)
+│   └── NotoSansSC-Regular.ttf # Chinese font (OFL license)
+├── config/                    # local configs (real files not committed; see *.example.json)
+│   ├── bark_map.example.json  # Bark alias → device key template
+│   └── push_map.example.json  # player ID → push method template
+├── data/                      # runtime data (whole directory gitignored)
+│   ├── tmp/                   # chunk upload staging, cleaned after merge
+│   ├── raw_mysekai/           # merged original (encrypted) saves, kept permanently
+│   ├── archive/               # historical output archive by-id/<user>/<timestamp>/ (Bark links point here)
+│   └── latest/                # most recent output
+├── cli.py                     # unified entry
+├── tests/                     # unit tests (pytest)
+├── .env.example               # env var template (copy to .env and fill in)
+└── requirements.txt           # runtime dependencies (pinned)
+```
+
+## Testing
+
+```bash
+python -m pytest
+```
+
+## Disclaimer
+
+This tool is for personal learning and entertainment only. Do not use it for any commercial purpose or in ways that violate the game's terms of service. Game data and art assets belong to their respective owners.
+
+## License
+
+The project's code is licensed under the [MIT License](LICENSE) (Copyright © 2025 mouse233) — free to use, modify, and redistribute. See [LICENSE](LICENSE) for details.
+
+> ⚠️ The license covers only the project's code: the game assets in `assets/` (e.g. the item icons inside `resourceId.csv`) and the game data belong to SEGA / Colorful Palette and other respective owners — **not covered by the MIT license** — please do not use them outside this tool.

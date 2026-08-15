@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mysekaimapper"
+version = "0.1.0"
+description = "Project Sekai MySekai harvest-drop map generator and notifier"
+readme = "README.md"
+requires-python = ">=3.10"
+# 运行依赖以 requirements.txt 为准(精确锁版本);此处留空避免双份维护
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+mysekai = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

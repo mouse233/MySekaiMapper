@@ -1,0 +1,25 @@
+# ---- 密钥与本地配置(切勿提交) ----
+.env
+*.env
+!.env.example
+
+# ---- 本地配置(含设备密钥 / 玩家 ID,用 *.example.json 模板替代) ----
+config/bark_map.json
+config/push_map.json
+
+# ---- 运行时数据(分片暂存 / 原始存档 / 归档 / 最新成品) ----
+data/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+venv/
+.venv/
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+*.log
+.idea/
+.vscode/

@@ -1,0 +1,148 @@
+"""FastAPI 上传服务。
+
+接收分片上传的加密存档,合并后在同一进程内生成地图并推送通知
+(不再通过 subprocess 调用脚本)。
+"""
+import asyncio
+import re
+import shutil
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi.responses import PlainTextResponse
+
+from . import config, notify as notify_mod
+from .render import generate as render_generate
+
+app = FastAPI()
+
+# === 安全限制参数 ===
+MAX_TOTAL_SIZE = 1 * 1024 * 1024    # 1MB 总大小
+MAX_CHUNK_SIZE = 1 * 1024 * 1024    # 1MB 单 chunk
+MAX_CHUNKS = 10                     # 最多 10 个分片
+UPLOAD_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def _user_id_from_url(original_url):
+    """从客户端上报的原始页面 URL 中提取玩家 ID。"""
+    if original_url:
+        m = re.search(r"/user/(\d+)", original_url)
+        if m:
+            return m.group(1)
+    return "unknown"
+
+
+def _archive_latest(user_id):
+    """把 data/latest/ 复制到 archive/by-id/<user>/<时间戳>/,返回归档目录。"""
+    archive_dir = (
+        config.ARCHIVE_DIR / "by-id" / str(user_id)
+        / datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for p in config.LATEST_DIR.iterdir():
+        dest = archive_dir / p.name
+        if p.is_dir():
+            shutil.copytree(p, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(p, dest)
+    return archive_dir
+
+
+def _generate_and_notify(bin_path, task_id, user_id):
+    """同步执行:生成地图 -> 归档 -> 推送。由调用方放入线程池。"""
+    render_generate(bin_path)
+
+    image_base = None
+    try:
+        archive_dir = _archive_latest(user_id)
+        if config.BARK_IMAGE_BASE:
+            image_base = (
+                config.BARK_IMAGE_BASE.rstrip("/")
+                + f"/archive/by-id/{user_id}/{archive_dir.name}"
+            )
+    except Exception as e:
+        print(f"[WARN] archive failed: {e}")
+
+    notify_mod.notify(config.LATEST_DIR, task_id, player_id=user_id, image_base=image_base)
+
+
+async def _run_generate_and_notify(bin_path, task_id, user_id):
+    try:
+        print(f"[LAUNCH] generating maps for {bin_path}")
+        await asyncio.to_thread(_generate_and_notify, bin_path, task_id, user_id)
+        print(f"[DONE] generate + notify finished for {bin_path}")
+    except Exception as e:
+        print(f"[ERROR] generate/notify failed: {e}")
+
+
+@app.post("/uploadMySekai")
+async def upload_chunk(
+    request: Request,
+    x_upload_id: str = Header(...),
+    x_chunk_index: int = Header(...),
+    x_total_chunks: int = Header(...),
+    x_original_url: str = Header(None),
+):
+    # ==== upload_id 安全校验 ====
+    if not UPLOAD_ID_PATTERN.fullmatch(x_upload_id):
+        raise HTTPException(400, "Invalid upload id")
+
+    # ==== chunk 参数校验 ====
+    if x_total_chunks <= 0 or x_total_chunks > MAX_CHUNKS:
+        raise HTTPException(400, "Invalid total chunks")
+
+    if x_chunk_index < 0 or x_chunk_index >= x_total_chunks:
+        raise HTTPException(400, "Invalid chunk index")
+
+    data = await request.body()
+
+    # ==== 单 chunk 大小限制 ====
+    if len(data) > MAX_CHUNK_SIZE:
+        raise HTTPException(413, "Chunk too large")
+
+    upload_path = config.TMP_DIR / x_upload_id
+    upload_path.mkdir(exist_ok=True)
+
+    # ==== 总大小限制 ====
+    current_size = sum(f.stat().st_size for f in upload_path.glob("chunk_*") if f.is_file())
+    if current_size + len(data) > MAX_TOTAL_SIZE:
+        raise HTTPException(413, "Total file too large")
+
+    chunk_file = upload_path / f"chunk_{x_chunk_index}"
+    with open(chunk_file, "wb") as f:
+        f.write(data)
+
+    print(f"[UPLOAD] {x_upload_id} chunk {x_chunk_index+1}/{x_total_chunks} ({len(data)} bytes)")
+
+    existing_chunks = list(upload_path.glob("chunk_*"))
+    if len(existing_chunks) == x_total_chunks:
+        print(f"[MERGE] {x_upload_id} all chunks received, merging...")
+
+        # 合并前兜底总大小校验
+        total_size = sum(f.stat().st_size for f in existing_chunks)
+        if total_size > MAX_TOTAL_SIZE:
+            shutil.rmtree(upload_path, ignore_errors=True)
+            raise HTTPException(413, "Merged file too large")
+
+        user_id = _user_id_from_url(x_original_url)
+        output_file = config.RAW_DIR / f"mysekai_{user_id}_{x_upload_id}.bin"
+
+        with open(output_file, "wb") as outfile:
+            for i in range(x_total_chunks):
+                chunk_path = upload_path / f"chunk_{i}"
+                with open(chunk_path, "rb") as infile:
+                    shutil.copyfileobj(infile, outfile)
+
+        shutil.rmtree(upload_path, ignore_errors=True)
+        print(f"[DONE] Mysekai saved to {output_file} ({output_file.stat().st_size} bytes)")
+
+        asyncio.create_task(_run_generate_and_notify(output_file, x_upload_id, user_id))
+        print(f"[LAUNCH] background task created for {output_file}")
+
+    return PlainTextResponse("OK")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=9478)
