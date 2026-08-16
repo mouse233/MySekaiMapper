@@ -27,13 +27,24 @@ def decompress_body(raw: bytes, content_encoding: Optional[str] = None) -> bytes
     if enc in ("zstd", "zstandard"):
         import zstandard
 
-        return zstandard.ZstdDecompressor().decompress(raw)
+        # 注意:Reqable(流式压缩)产出的 zstd 帧头通常不携带内容大小,
+        # ZstdDecompressor().decompress() 会报
+        # "could not determine content size in frame header",
+        # 因此必须用不依赖帧头 content size 的 decompressobj()。
+        return zstandard.ZstdDecompressor().decompressobj().decompress(raw)
     raise ValueError(f"Unsupported Content-Encoding: {content_encoding!r}")
 
 
 def parse_har(raw: bytes, content_encoding: Optional[str] = None) -> dict:
-    """解压并解析 HAR JSON。"""
-    body = decompress_body(raw, content_encoding)
+    """解压并解析 HAR JSON。
+
+    解压失败时兜底按未压缩 JSON 直接解析(Reqable 偶发会带编码头却发未压缩体,
+    失败不重试,尽量宽容)。
+    """
+    try:
+        body = decompress_body(raw, content_encoding)
+    except Exception:
+        body = raw
     return json.loads(body.decode("utf-8"))
 
 

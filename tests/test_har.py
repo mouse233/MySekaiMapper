@@ -74,6 +74,23 @@ def test_decompress_br_zstd(encoding):
     assert har.decompress_body(raw, encoding) == plain
 
 
+def test_decompress_zstd_without_content_size():
+    """回归:Reqable 流式压缩的 zstd 帧头不携带内容大小,
+    必须用 decompressobj() 而非 ZstdDecompressor().decompress()。"""
+    import zstandard
+
+    plain = b"hello zstd no-size" * 1000
+    raw = zstandard.ZstdCompressor(write_content_size=False).compress(plain)
+    assert har.decompress_body(raw, "zstd") == plain
+
+
+def test_parse_har_falls_back_to_uncompressed_json():
+    """回归:带 Content-Encoding 但实际未压缩的请求体也应能解析。"""
+    har_data = {"log": {"entries": []}}
+    raw = json.dumps(har_data).encode("utf-8")
+    assert har.parse_har(raw, "gzip") == har_data
+
+
 def test_decompress_unknown_raises():
     with pytest.raises(ValueError, match="Unsupported"):
         har.decompress_body(b"x", "deflate")
