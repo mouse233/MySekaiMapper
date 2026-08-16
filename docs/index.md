@@ -41,5 +41,3 @@ notify.py    Push:
 ```
 
 > ⚠️ **Disclaimer**: this tool is for personal learning and entertainment only. Do not use it for any commercial purpose or in ways that violate the game's terms of service. Game data and art assets belong to their respective owners.
-
-Available in: [简体中文](/zh-CN/) · [繁體中文](/zh-TW/) · [日本語](/ja-JP/) · [한국어](/ko-KR/)
