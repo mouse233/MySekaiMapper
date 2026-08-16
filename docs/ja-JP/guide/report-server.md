@@ -1,16 +1,16 @@
-# Reqable レポートサーバー（任意）
+# Reqable レポートサーバー
 
-Reqable の「レポートサーバー」機能（v2.20.0+）は、キャプチャした各 HTTP セッションを HAR JSON 形式で自動的にあなたのサーバーへ POST します。gzip / brotli / zstd による圧縮も選択可能です。サーバー側では `REPORT_ENABLED=1` で対応するエンドポイントを有効にします：
+Reqable の「レポートサーバー」機能（v2.20.0+）は、キャプチャした各 HTTP セッションを HAR JSON 形式で自動的にあなたのサーバーへ POST します。gzip / brotli / zstd による圧縮も選択可能です。レポートエンドポイントは**デフォルトで有効**で、分割アップロードと共存します——`python cli.py server` で両方のエンドポイントが提供されます。無効にするには `REPORT_ENABLED=0` を設定します：
 
 ```bash
-REPORT_ENABLED=1 python cli.py server
+python cli.py server
 ```
 
 設定（`.env`）：
 
 | 変数 | デフォルト | 説明 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | （空 = 無効） | `1` / `true` を設定するとレポートエンドポイントが有効になります |
+| `REPORT_ENABLED` | `1`（有効） | `0` / `false` を設定するとレポートエンドポイントが無効になります |
 | `REPORT_PATH` | `/reqable/report` | エンドポイントのパス。Reqable の「アップロードパス」欄にこの値を入力します |
 | `REPORT_MAX_SIZE` | `8` | HAR ボディのサイズ上限（MB）。セーブデータ自体は ≤1MB である必要があり、base64 で約 33% 膨張します |
 | `REPORT_TOKEN` | （空） | 任意の共有トークン。設定するとエンドポイントは `X-Report-Token` ヘッダーを要求します |

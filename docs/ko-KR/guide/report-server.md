@@ -1,16 +1,16 @@
-# Reqable 보고서 서버(선택)
+# Reqable 보고서 서버
 
-Reqable의 내장「보고서 서버」기능(v2.20.0+)은 캡처한 각 HTTP 세션을 HAR JSON 형식으로 사용자 서버에 자동으로 POST합니다. gzip / brotli / zstd 압축을 선택할 수 있습니다. 서버에서는 `REPORT_ENABLED=1`로 해당 엔드포인트를 활성화합니다:
+Reqable의 내장「보고서 서버」기능(v2.20.0+)은 캡처한 각 HTTP 세션을 HAR JSON 형식으로 사용자 서버에 자동으로 POST합니다. gzip / brotli / zstd 압축을 선택할 수 있습니다. 보고서 엔드포인트는 **기본적으로 활성화**되어 있으며 분할 업로드와 공존합니다——`python cli.py server`로 두 엔드포인트가 모두 제공됩니다. 비활성화하려면 `REPORT_ENABLED=0`을 설정합니다:
 
 ```bash
-REPORT_ENABLED=1 python cli.py server
+python cli.py server
 ```
 
 설정(`.env`):
 
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | (비어 있음 = 꺼짐) | `1` / `true`로 설정하면 보고서 엔드포인트가 활성화됩니다 |
+| `REPORT_ENABLED` | `1`(활성화) | `0` / `false`로 설정하면 보고서 엔드포인트가 비활성화됩니다 |
 | `REPORT_PATH` | `/reqable/report` | 엔드포인트 경로. Reqable의「업로드 경로」란에 이 값을 입력합니다 |
 | `REPORT_MAX_SIZE` | `8` | HAR 본문 크기 상한(MB). 세이브 데이터 자체는 ≤1MB여야 하며, base64로 약 33% 커집니다 |
 | `REPORT_TOKEN` | (비어 있음) | 선택적 공유 토큰. 설정하면 엔드포인트가 `X-Report-Token` 헤더를 요구합니다 |

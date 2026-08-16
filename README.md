@@ -173,19 +173,19 @@ rm -f /tmp/ms_chunk_*
 
 A `200 OK` per chunk means it was accepted; once the last chunk arrives, the server starts merging and the rest of the pipeline automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
 
-## Reqable Report Server (optional)
+## Reqable Report Server
 
-Instead of a custom capture client, you can use Reqable's built-in **Report Server** feature (Reqable v2.20.0+): it automatically POSTs each captured HTTP session to your server in the [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON format, optionally compressed with gzip / brotli / zstd. Enable it on the server side with `REPORT_ENABLED=1`:
+Instead of a custom capture client, you can use Reqable's built-in **Report Server** feature (Reqable v2.20.0+): it automatically POSTs each captured HTTP session to your server in the [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON format, optionally compressed with gzip / brotli / zstd. The report endpoint is **enabled by default** and coexists with the chunked upload API — `python cli.py server` serves both. Set `REPORT_ENABLED=0` to disable it:
 
 ```bash
-REPORT_ENABLED=1 python cli.py server
+python cli.py server
 ```
 
 Configuration (`.env`):
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `REPORT_ENABLED` | *(empty = off)* | Set to `1` / `true` to enable the report endpoint |
+| `REPORT_ENABLED` | `1` (on) | Set to `0` / `false` to disable the report endpoint |
 | `REPORT_PATH` | `/reqable/report` | Endpoint path; fill this into the Reqable "Upload Path" field |
 | `REPORT_MAX_SIZE` | `8` | Max HAR body size in MB (the save itself must stay ≤1MB; base64 inflates it ~33%) |
 | `REPORT_TOKEN` | *(empty)* | Optional shared token; when set, the endpoint requires the `X-Report-Token` header |
@@ -340,7 +340,7 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`: optional upload task ID, defaults to `unknown`. Used to look up the player ID from `data/raw_mysekai/`: it first tries to match `mysekai_<playerID>_<task_id>.bin`, otherwise falls back to the newest save in raw_mysekai
 - Telegram vs Bark is decided by the routing in `config/push_map.json` (unconfigured players default to Telegram); see [Player push routing](#player-push-routing-optional)
 
-### server — start the upload service (chunked upload + optional Reqable report server)
+### server — start the upload service (chunked upload + Reqable report server)
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]

@@ -142,7 +142,6 @@ def test_entry_candidate_bodies_prefers_response():
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv("AES_KEY", KEY.decode("ascii"))
     monkeypatch.setenv("AES_IV", IV.decode("ascii"))
-    monkeypatch.setattr(config, "REPORT_ENABLED", True)
     monkeypatch.setattr(config, "RAW_DIR", tmp_path)
 
     async def _noop_run(bin_path, task_id, user_id):

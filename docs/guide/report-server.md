@@ -1,16 +1,16 @@
-# Reqable Report Server (optional)
+# Reqable Report Server
 
-Reqable's built-in **Report Server** feature (v2.20.0+) automatically POSTs each captured HTTP session to your own server in HAR JSON format, optionally compressed with gzip / brotli / zstd. Enable the matching endpoint with `REPORT_ENABLED=1`:
+Reqable's built-in **Report Server** feature (v2.20.0+) automatically POSTs each captured HTTP session to your own server in HAR JSON format, optionally compressed with gzip / brotli / zstd. The report endpoint is **enabled by default** and coexists with the chunked upload API — `python cli.py server` serves both. Set `REPORT_ENABLED=0` to disable it:
 
 ```bash
-REPORT_ENABLED=1 python cli.py server
+python cli.py server
 ```
 
 Configuration (`.env`):
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `REPORT_ENABLED` | *(empty = off)* | Set to `1` / `true` to enable the report endpoint |
+| `REPORT_ENABLED` | `1` (on) | Set to `0` / `false` to disable the report endpoint |
 | `REPORT_PATH` | `/reqable/report` | Endpoint path; fill this into Reqable's "Upload Path" field |
 | `REPORT_MAX_SIZE` | `8` | Max HAR body size in MB (the save itself must stay ≤1MB; base64 inflates it ~33%) |
 | `REPORT_TOKEN` | *(empty)* | Optional shared token; when set, the endpoint requires the `X-Report-Token` header |

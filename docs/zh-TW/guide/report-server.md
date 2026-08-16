@@ -1,16 +1,16 @@
-# Reqable 上報伺服器（選用）
+# Reqable 上報伺服器
 
-Reqable 內建的「上報伺服器」功能（v2.20.0+）會把每個已捕獲的 HTTP 工作階段依 HAR JSON 格式自動 POST 到你自建的主機端，可選 gzip / brotli / zstd 壓縮。主機端用 `REPORT_ENABLED=1` 開啟對應端點：
+Reqable 內建的「上報伺服器」功能（v2.20.0+）會把每個已捕獲的 HTTP 工作階段依 HAR JSON 格式自動 POST 到你自建的主機端，可選 gzip / brotli / zstd 壓縮。上報端點**預設開啟**，與分片上傳共存——`python cli.py server` 同時提供兩個介面；設 `REPORT_ENABLED=0` 可關閉：
 
 ```bash
-REPORT_ENABLED=1 python cli.py server
+python cli.py server
 ```
 
 設定（`.env`）：
 
 | 變數 | 預設值 | 說明 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | （空 = 關閉） | 設為 `1` / `true` 開啟上報端點 |
+| `REPORT_ENABLED` | `1`（開啟） | 設 `0` / `false` 關閉上報端點 |
 | `REPORT_PATH` | `/reqable/report` | 端點路徑，填入 Reqable 的「上報路徑」 |
 | `REPORT_MAX_SIZE` | `8` | HAR 請求主體大小上限（MB）；存檔本身需 ≤1MB，base64 膨脹約 33% |
 | `REPORT_TOKEN` | （空） | 選用共享令牌；設定後端點要求請求頭 `X-Report-Token` 匹配 |
