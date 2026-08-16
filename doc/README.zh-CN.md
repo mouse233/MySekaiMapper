@@ -1,5 +1,9 @@
 # MySekaiMapper
 
+🌐 语言: [English](../README.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
+
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/zh-CN/>
+
 《世界计划 多彩舞台》（Project Sekai）MySekai（我的世界）采集点地图生成工具。
 
 **项目初衷**：搭配 MitM 模块或 Reqable 的「上报服务器」功能使用——抓包工具捕获游戏内 MySekai 数据包后，自动分片上传到本服务；服务端合并加密存档、解密并提取各站点的资源掉落坐标，绘制采集地图，再把结果（含稀有资源统计）推送到玩家的 Telegram / Bark（iOS Day.app），全程无需人工介入。

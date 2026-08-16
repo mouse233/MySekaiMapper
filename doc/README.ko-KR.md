@@ -2,6 +2,8 @@
 
 🌐 언어: [English](../README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
 
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/ko-KR/>
+
 프로젝트 세카이 컬러풀 스테이지! feat. 하츠네 미쿠(Project Sekai)의 MySekai(내 세카이) 수집 포인트 지도 생성 도구입니다.
 
 **프로젝트 취지**: MitM 모듈 또는 Reqable의「보고서 서버」기능과 함께 사용합니다——패킷 캡처 도구가 게임 내 MySekai 데이터 패킷을 캡처하면 자동으로 이 서비스에 분할 업로드하고, 서버가 암호화된 저장 파일을 병합·복호화하여 각 사이트의 자원 드롭 좌표를 추출한 뒤 수집 지도를 그려 그 결과(희귀 자원 통계 포함)를 플레이어의 Telegram / Bark(iOS Day.app)로 푸시합니다. 전 과정에서 수동 개입이 필요 없습니다.

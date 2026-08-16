@@ -4,7 +4,7 @@
 
 **Original intent**: designed to work with MitM modules or Reqable's "Report Server" feature — the capture tool grabs MySekai data packets from the game and automatically uploads them to this service in chunks. The server merges the encrypted saves, decrypts them, extracts the resource drop coordinates of every station, draws gathering maps, and pushes the results (including a rare-resource summary) to the player's Telegram / Bark (iOS Day.app) — no manual intervention required.
 
-Each task produces **4 maps**: `site_5.png` (Empty Lot), `site_6.png` (Wish Beach), `site_7.png` (Flower Field), `site_8.png` (Place of Forgetting), plus a `rare_resources.txt` rare-resource summary.
+Each task produces **4 maps**: `site_5.png` (Grassland), `site_6.png` (Beach), `site_7.png` (Flower Garden), `site_8.png` (Memorial Place), plus a `rare_resources.txt` rare-resource summary.
 
 ::: info Supported servers
 This project has been tested and verified on the CN and TW servers operated by Nuverse (朝夕光年). Availability on other servers is unknown.
