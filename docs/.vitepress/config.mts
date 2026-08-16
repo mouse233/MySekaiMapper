@@ -125,6 +125,37 @@ export default defineConfig({
   markdown: {
     lineNumbers: true
   },
+  // 仅对默认语言(英文)首页注入"按系统语言自动跳转"脚本:
+  // 在页面渲染前读取 navigator.language,若系统语言为中文/日文/韩文则重定向到对应语言首页。
+  // 只匹配主站根路径,用户已访问的特定语言页面不受影响。
+  transformHtml(code, _id, ctx) {
+    if (ctx.page === 'index.md') {
+      const script = `<script>
+(function () {
+  var base = '/MySekaiMapper/';
+  var path = location.pathname.replace(/\\/+$/, '');
+  if (path !== base.replace(/\\/+$/, '')) return;
+  var lang = (navigator.language || 'en').toLowerCase();
+  var map = [
+    ['zh-tw', 'zh-TW/'],
+    ['zh-hk', 'zh-TW/'],
+    ['zh-cn', 'zh-CN/'],
+    ['zh', 'zh-CN/'],
+    ['ja', 'ja-JP/'],
+    ['ko', 'ko-KR/']
+  ];
+  for (var i = 0; i < map.length; i++) {
+    if (lang.indexOf(map[i][0]) === 0) {
+      location.replace(base + map[i][1]);
+      return;
+    }
+  }
+})();
+</script>`
+      return code.replace('</head>', script + '\n</head>')
+    }
+    return code
+  },
   locales: {
     root: {
       label: 'English',
