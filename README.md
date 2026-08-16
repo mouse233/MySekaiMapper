@@ -173,6 +173,50 @@ rm -f /tmp/ms_chunk_*
 
 A `200 OK` per chunk means it was accepted; once the last chunk arrives, the server starts merging and the rest of the pipeline automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
 
+## Reqable Report Server (optional)
+
+Instead of a custom capture client, you can use Reqable's built-in **Report Server** feature (Reqable v2.20.0+): it automatically POSTs each captured HTTP session to your server in the [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON format, optionally compressed with gzip / brotli / zstd. Enable it on the server side with `REPORT_ENABLED=1`:
+
+```bash
+REPORT_ENABLED=1 python cli.py server
+```
+
+Configuration (`.env`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `REPORT_ENABLED` | *(empty = off)* | Set to `1` / `true` to enable the report endpoint |
+| `REPORT_PATH` | `/reqable/report` | Endpoint path; fill this into the Reqable "Upload Path" field |
+| `REPORT_MAX_SIZE` | `8` | Max HAR body size in MB (the save itself must stay ≤1MB; base64 inflates it ~33%) |
+| `REPORT_TOKEN` | *(empty)* | Optional shared token; when set, the endpoint requires the `X-Report-Token` header |
+
+What the endpoint does with each report:
+
+1. Decompresses the body (`Content-Encoding: gzip` / `br` / `zstd`) and parses the HAR.
+2. Walks `log.entries` and takes the first session whose response body (fallback: request body) decrypts with `AES_KEY`/`AES_IV` and parses as a MySekai save — unrelated API traffic matching the rule is skipped.
+3. Resolves the player ID from the session URL (`/user/<id>`, same rule as `X-Original-Url`).
+4. Saves the archive to `data/raw_mysekai/` and launches the same generate → archive → notify pipeline as chunked uploads.
+
+Notes:
+
+- Reqable sends each session **exactly once and never retries**, so the endpoint answers `200` as fast as possible; make sure your server is stable and watch the `[REPORT]` log lines.
+- Only **one** archive per report is processed (the first valid entry), so a rule matching many endpoints won't cause duplicate pushes.
+- Security: the protocol has no built-in auth. Since Reqable cannot attach custom headers, prefer embedding a random secret in `REPORT_PATH` (e.g. `/reqable/report/9f3a…`) or restrict access with a reverse proxy / firewall instead of relying on `REPORT_TOKEN`.
+
+Example Reqable configuration:
+
+- URL matching rule: `https://<game-api-host>/*` (or narrow it down, e.g. `https://<game-api-host>/user/*/mysekai*`)
+- Upload path: `http://<your-server>:9478/reqable/report`
+- Compression: any of gzip / brotli / zstd (server supports all three)
+
+Manual curl test (gzip-compressed HAR):
+
+```bash
+gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
+  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  --data-binary @-
+```
+
 ## Push mechanism
 
 ### Telegram Bot by default
@@ -296,7 +340,7 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`: optional upload task ID, defaults to `unknown`. Used to look up the player ID from `data/raw_mysekai/`: it first tries to match `mysekai_<playerID>_<task_id>.bin`, otherwise falls back to the newest save in raw_mysekai
 - Telegram vs Bark is decided by the routing in `config/push_map.json` (unconfigured players default to Telegram); see [Player push routing](#player-push-routing-optional)
 
-### server — start the chunked upload service
+### server — start the upload service (chunked upload + optional Reqable report server)
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]

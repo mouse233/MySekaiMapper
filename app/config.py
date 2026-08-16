@@ -37,6 +37,18 @@ BARK_ICON = os.environ.get("BARK_ICON")
 BARK_IMAGE_BASE = os.environ.get("BARK_IMAGE_BASE")
 FALLBACK_IMAGE_BASE = os.environ.get("FALLBACK_IMAGE_BASE")
 
+# ---- Reqable 上报服务器(可选,默认关闭) ----
+# 开启后服务端额外提供 POST <REPORT_PATH> 端点,接收 Reqable「上报服务器」
+# 功能按 HAR 格式上报的会话数据(支持 gzip / brotli / zstd 压缩)。
+REPORT_ENABLED = os.environ.get("REPORT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+REPORT_PATH = os.environ.get("REPORT_PATH", "/reqable/report")
+# HAR JSON 请求体大小上限(默认 8MB;存档 ≤1MB,base64 膨胀约 33%,留足余量)
+REPORT_MAX_SIZE = int(os.environ.get("REPORT_MAX_SIZE", "8")) * 1024 * 1024
+# 可选共享令牌:设置后上报端点要求请求头 X-Report-Token 与之匹配
+# (Reqable 本身无法附加自定义请求头,若用它上报建议把随机串拼进 REPORT_PATH 代替,
+#  或依靠反向代理 IP 白名单防护)
+REPORT_TOKEN = os.environ.get("REPORT_TOKEN", "")
+
 # ---- 本地 JSON 配置(含设备密钥/玩家 ID,不提交,参考 config/*.example.json) ----
 BARK_MAP_FILE = CONFIG_DIR / "bark_map.json"
 PUSH_MAP_FILE = CONFIG_DIR / "push_map.json"
