@@ -18,6 +18,12 @@ __pycache__/
 venv/
 .venv/
 
+# ---- VitePress 文档站 ----
+node_modules/
+.npm-cache/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # ---- 系统 / 编辑器 ----
 .DS_Store
 *.log

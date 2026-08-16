@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mysekaimapper"
 version = "0.1.0"
-description = "Project Sekai MySekai harvest-drop map generator and notifier"
+description = "A resource-gathering point map generator and auto-notifier for MySekai in Project SEKAI"
 readme = "README.md"
 requires-python = ">=3.10"
 # 运行依赖以 requirements.txt 为准(精确锁版本);此处留空避免双份维护

@@ -1,6 +1,7 @@
 # MySekaiMapper
 
 🌐 **Languages**: [简体中文](doc/README.zh-CN.md) · [繁體中文](doc/README.zh-TW.md) · [日本語](doc/README.ja-JP.md) · [한국어](doc/README.ko-KR.md)
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
 
 A resource-gathering point map generator for the MySekai mode in *Project Sekai* (世界计划 多彩舞台).
 
