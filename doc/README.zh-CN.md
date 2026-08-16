@@ -185,6 +185,18 @@ Reqable 侧配置示例：
 - 上报路径：`http://<你的服务器>:9478/reqable/report`
 - 压缩算法：gzip / brotli / zstd 均可（服务端三种都支持）
 
+五个服务器的游戏 API 域名：
+
+| 服务器 | 游戏 API 域名 |
+| --- | --- |
+| JP | `https://production-game-api.sekai.colorfulpalette.org` |
+| EN | `https://n-production-game-api.sekai-en.com` |
+| TW | `https://mk-zian-obt-cdn.bytedgame.com` |
+| KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
+| CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
+
+建议先用域名通配规则 `https://<域名>/*`——无关会话会被服务端自动跳过。如果你的服务器 mysekai 接口也是 `/api/user/*/mysekai*` 路径（CN 已实测验证），可收窄为 `https://<域名>/api/user/*/mysekai*` 以减少上报量。
+
 手动 curl 验证（gzip 压缩的 HAR）：
 
 ```bash
