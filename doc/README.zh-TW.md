@@ -148,6 +148,50 @@ curl -X POST http://127.0.0.1:9478/uploadMySekai \
   --data-binary @mysekai.bin
 ```
 
+## Reqable 上報伺服器
+
+不依賴自訂抓封包用戶端，也可以直接用 Reqable 內建的「上報伺服器」功能（Reqable v2.20.0+）：它會把每個已捕獲的 HTTP 工作階段依 [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON 格式自動 POST 到你的伺服器，可選 gzip / brotli / zstd 壓縮。上報端點**預設開啟**，與分片上傳共存——`python cli.py server` 同時提供兩個介面；設 `REPORT_ENABLED=0` 可關閉：
+
+```bash
+python cli.py server
+```
+
+設定（`.env`）：
+
+| 變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `REPORT_ENABLED` | `1`（開啟） | 設 `0` / `false` 關閉上報端點 |
+| `REPORT_PATH` | `/reqable/report` | 端點路徑，填入 Reqable 的「上報路徑」 |
+| `REPORT_MAX_SIZE` | `8` | HAR 請求主體大小上限（MB）；存檔本身需 ≤1MB，base64 膨脹約 33% |
+| `REPORT_TOKEN` | （空） | 選用共享令牌；設定後端點要求請求頭 `X-Report-Token` 匹配 |
+
+每次上報，主機端會：
+
+1. 依 `Content-Encoding`（gzip / br / zstd）解壓並解析 HAR。
+2. 遍歷 `log.entries`，取第一個「回應主體（兜底：請求主體）能用 `AES_KEY` / `AES_IV` 解密並解析為 MySekai 存檔」的工作階段——命中規則但與存檔無關的流量會被跳過。
+3. 從工作階段 URL 解析玩家 ID（`/user/<id>`，與 `X-Original-Url` 同規則）。
+4. 存檔儲存到 `data/raw_mysekai/`，並啟動與分片上傳相同的 生成 → 歸檔 → 推播 流水線。
+
+注意：
+
+- Reqable 每個工作階段**只上報 1 次且失敗不重試**，因此端點會盡快回傳 `200`。請保持服務穩定，並留意 `[REPORT]` 日誌。
+- 每次上報只處理 **1 份**存檔（第一個有效條目），因此匹配多個介面的規則不會造成重複推播。
+- 安全性：協定本身沒有鑑權。Reqable 無法附加自訂請求頭，建議把隨機字串拼進 `REPORT_PATH`（如 `/reqable/report/9f3a…`），或用反向代理 / 防火牆限制存取，而不是依賴 `REPORT_TOKEN`。
+
+Reqable 側設定範例：
+
+- URL 匹配規則：`https://<遊戲API網域>/*`（或更精確，如 `https://<遊戲API網域>/user/*/mysekai*`）
+- 上報路徑：`http://<你的伺服器>:9478/reqable/report`
+- 壓縮演算法：gzip / brotli / zstd 皆可（主機端三種都支援）
+
+手動 curl 驗證（gzip 壓縮的 HAR）：
+
+```bash
+gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
+  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  --data-binary @-
+```
+
 ## 推播機制
 
 ### 預設走 Telegram Bot
@@ -271,7 +315,7 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`：選填，上傳任務 ID，預設 `unknown`。用於從 `data/raw_mysekai/` 反查玩家 ID：優先比對 `mysekai_<玩家ID>_<task_id>.bin`，比對不到時取 raw_mysekai 裡最新的存檔
 - 推播到 Telegram 還是 Bark 由 `config/push_map.json` 路由（未設定的玩家預設走 Telegram），詳見「玩家推播路由」
 
-### server —— 啟動分片上傳服務
+### server —— 啟動上傳服務（分片上傳 + Reqable 上報伺服器）
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
