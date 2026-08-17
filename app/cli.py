@@ -26,7 +26,8 @@ def cmd_notify(args):
 
 def cmd_server(args):
     import uvicorn
-    from .server import app
+    from .server import app, print_api_banner
+    print_api_banner(args.host, args.port)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

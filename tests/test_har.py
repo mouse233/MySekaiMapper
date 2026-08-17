@@ -152,6 +152,23 @@ def test_entry_candidate_bodies_prefers_response():
     assert list(har.entry_candidate_bodies(entry_no_response)) == [b"req-body"]
 
 
+def test_api_banner_prints_both_endpoints(capsys, monkeypatch):
+    monkeypatch.setattr(config, "REPORT_ENABLED", True)
+    server.print_api_banner("0.0.0.0", 9478)
+    out = capsys.readouterr().out
+    assert "POST http://0.0.0.0:9478/uploadMySekai" in out
+    assert "POST http://0.0.0.0:9478/reqable/report" in out
+    assert "已开启" in out
+
+
+def test_api_banner_shows_disabled_state(capsys, monkeypatch):
+    monkeypatch.setattr(config, "REPORT_ENABLED", False)
+    server.print_api_banner("127.0.0.1", 9999)
+    out = capsys.readouterr().out
+    assert "http://127.0.0.1:9999/uploadMySekai" in out
+    assert "已关闭" in out
+
+
 # ---------- 上报端点 ----------
 
 @pytest.fixture

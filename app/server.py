@@ -114,6 +114,16 @@ def _looks_like_archive(data: bytes) -> bool:
     return isinstance(obj, dict) and "updatedResources" in obj
 
 
+def print_api_banner(host: str = "0.0.0.0", port: int = 9478):
+    """启动时打印两个 API 端点的提示信息。"""
+    base = f"http://{host}:{port}"
+    status = "已开启" if config.REPORT_ENABLED else "已关闭(REPORT_ENABLED=0)"
+    print("-" * 62)
+    print(f"[API] 分片上传(抓包客户端):  POST {base}/uploadMySekai")
+    print(f"[API] Reqable 上报服务器:    POST {base}{config.REPORT_PATH}  [{status}]")
+    print("-" * 62)
+
+
 @app.post("/uploadMySekai")
 async def upload_chunk(
     request: Request,
@@ -244,4 +254,5 @@ async def reqable_report(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
+    print_api_banner("0.0.0.0", 9478)
     uvicorn.run(app, host="0.0.0.0", port=9478)
