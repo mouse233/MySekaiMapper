@@ -39,11 +39,14 @@ def parse_har(raw: bytes, content_encoding: Optional[str] = None) -> dict:
     """解压并解析 HAR JSON。
 
     解压失败时兜底按未压缩 JSON 直接解析(Reqable 偶发会带编码头却发未压缩体,
-    失败不重试,尽量宽容)。
+    失败不重试,尽量宽容)。只有 raw 明显是 JSON 文本时才走兜底,
+    否则抛出原始解压错误(如缺 brotli/zstandard 依赖),便于定位问题。
     """
     try:
         body = decompress_body(raw, content_encoding)
-    except Exception:
+    except Exception as e:
+        if not raw.lstrip().startswith((b"{", b"[")):
+            raise e
         body = raw
     return json.loads(body.decode("utf-8"))
 

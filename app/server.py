@@ -201,7 +201,10 @@ async def reqable_report(request: Request):
     try:
         har = har_mod.parse_har(raw, content_encoding)
     except Exception as e:
-        print(f"[REPORT] invalid HAR body: {e}")
+        print(
+            f"[REPORT] invalid HAR body: {e} "
+            f"(Content-Encoding={content_encoding!r}, head={raw[:8].hex()})"
+        )
         raise HTTPException(400, "Invalid HAR body")
 
     platform = request.headers.get("x-reqable-platform", "-")

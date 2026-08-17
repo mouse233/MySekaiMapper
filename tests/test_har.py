@@ -91,6 +91,22 @@ def test_parse_har_falls_back_to_uncompressed_json():
     assert har.parse_har(raw, "gzip") == har_data
 
 
+def test_parse_har_reraises_when_body_is_not_json():
+    """解压失败且 body 不是 JSON 文本时,应抛出原始解压错误(而不是
+    误导性的 utf-8 解码错误),便于定位缺依赖/编码不匹配等问题。"""
+    import zstandard
+
+    zstd_body = zstandard.ZstdCompressor(write_content_size=False).compress(
+        json.dumps({"log": {"entries": []}}).encode("utf-8")
+    )
+    # gzip 头 + zstd 体:解压失败,body 不是 JSON 文本 -> 抛原始错误
+    with pytest.raises(Exception):
+        har.parse_har(zstd_body, "gzip")
+    # 无编码头 + zstd 体:同样应抛出而不是静默兜底
+    with pytest.raises(Exception):
+        har.parse_har(zstd_body, None)
+
+
 def test_decompress_unknown_raises():
     with pytest.raises(ValueError, match="Unsupported"):
         har.decompress_body(b"x", "deflate")
