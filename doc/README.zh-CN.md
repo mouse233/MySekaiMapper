@@ -355,9 +355,10 @@ python cli.py notify data/latest <task_id>   # 2. 推送（task_id 填上传 ID�
 │   ├── config.py              # 路径／环境变量／本地配置集中管理
 │   ├── crypto.py              # MySekai 存档 AES-128-CBC 解密
 │   ├── parser.py              # msgpack 解析＋站点坐标旋转（纯函数）
+│   ├── har.py                 # Reqable 上报服务器 HAR 解析与解压（纯函数）
 │   ├── render.py              # 提取掉落点 → matplotlib 绘图＋稀有资源统计
 │   ├── notify.py              # 推送：Telegram 媒体组／Bark，按玩家路由
-│   ├── server.py              # FastAPI 分片上传服务
+│   ├── server.py              # FastAPI 上传服务（分片上传 + Reqable 上报服务器）
 │   └── cli.py                 # 命令行入口
 ├── assets/                    # 静态资源（提交到仓库）
 │   ├── resourceId.csv         # 物品 ID → 名称＋图标（base64）

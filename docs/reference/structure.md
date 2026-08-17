@@ -5,9 +5,10 @@
 │   ├── config.py              # centralized paths / env vars / local config
 │   ├── crypto.py              # MySekai save AES-128-CBC decryption
 │   ├── parser.py              # msgpack parsing + station coordinate rotation (pure functions)
+│   ├── har.py                 # HAR parsing + decompression for the Reqable report server (pure functions)
 │   ├── render.py              # extract drop points → matplotlib drawing + rare-resource stats
 │   ├── notify.py              # push: Telegram media groups / Bark, per-player routing
-│   ├── server.py              # FastAPI chunked upload service
+│   ├── server.py              # FastAPI upload service (chunked upload + Reqable report server)
 │   └── cli.py                 # CLI entry
 ├── assets/                    # static assets (committed to the repo)
 │   ├── resourceId.csv         # item ID → name + icon (base64)
