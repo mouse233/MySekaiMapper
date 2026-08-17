@@ -22,3 +22,5 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 让 tests/ 下的测试能 import app 包(裸 pytest 调用时仓库根不在 sys.path)
+pythonpath = ["."]
