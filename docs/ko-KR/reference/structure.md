@@ -5,9 +5,10 @@
 │   ├── config.py              # 경로／환경 변수／로컬 설정 통합 관리
 │   ├── crypto.py              # MySekai 저장 파일 AES-128-CBC 복호화
 │   ├── parser.py              # msgpack 파싱＋사이트 좌표 회전(순수 함수)
+│   ├── har.py                 # Reqable 보고서 서버 HAR 파싱 및 압축 해제(순수 함수)
 │   ├── render.py              # 드롭 지점 추출 → matplotlib 플로팅＋희귀 자원 통계
 │   ├── notify.py              # 푸시: Telegram 미디어 그룹／Bark, 플레이어별 라우팅
-│   ├── server.py              # FastAPI 분할 업로드 서비스
+│   ├── server.py              # FastAPI 업로드 서비스(분할 업로드 + Reqable 보고서 서버)
 │   └── cli.py                 # 명령줄 진입점
 ├── assets/                    # 정적 리소스(저장소에 커밋됨)
 │   ├── resourceId.csv         # 아이템 ID → 이름＋아이콘(base64)

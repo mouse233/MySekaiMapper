@@ -355,9 +355,10 @@ python cli.py notify data/latest <task_id>   # 2. プッシュ（task_id には�
 │   ├── config.py              # パス／環境変数／ローカル設定の集中管理
 │   ├── crypto.py              # MySekai セーブデータの AES-128-CBC 復号
 │   ├── parser.py              # msgpack 解析＋ステーション座標回転（純関数）
+│   ├── har.py                 # Reqable レポートサーバー用 HAR 解析・解凍（純関数）
 │   ├── render.py              # ドロップポイント抽出 → matplotlib 描画＋レア資源統計
 │   ├── notify.py              # プッシュ：Telegram メディアグループ／Bark、プレイヤールーティング対応
-│   ├── server.py              # FastAPI 分割アップロードサービス
+│   ├── server.py              # FastAPI アップロードサービス（分割アップロード + Reqable レポートサーバー）
 │   └── cli.py                 # コマンドラインエントリポイント
 ├── assets/                    # 静的リソース（リポジトリにコミット）
 │   ├── resourceId.csv         # アイテム ID → 名称＋アイコン（base64）
