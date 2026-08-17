@@ -1,0 +1,40 @@
+# Python 测试工作流:push / PR 时在干净环境安装依赖并运行全部测试
+# 用途:
+#   - 验证 requirements.txt 依赖完整(避免"本地能跑、干净环境装不上")
+#   - 守护 41 个测试(分片合并 / Reqable 上报 / HAR 解析 / 压缩 / 令牌 / 上限)
+#   - 多 Python 版本兼容性检查
+
+name: Python tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: pytest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -q
