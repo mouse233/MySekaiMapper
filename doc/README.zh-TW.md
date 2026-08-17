@@ -180,7 +180,7 @@ python cli.py server
 
 Reqable 側設定範例：
 
-- URL 匹配規則：`https://<遊戲API網域>/*`（或更精確，如 `https://<遊戲API網域>/user/*/mysekai*`）
+- URL 匹配規則：`https://<遊戲API網域>/api/user/*/mysekai*`
 - 上報路徑：`http://<你的伺服器>:9478/reqable/report`
 - 壓縮演算法：gzip / brotli / zstd 皆可（主機端三種都支援）
 
@@ -194,7 +194,7 @@ Reqable 側設定範例：
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-建議先用網域通配規則 `https://<網域>/*`——無關工作階段會被主機端自動跳過。如果你的伺服器 mysekai 介面也是 `/api/user/*/mysekai*` 路徑（CN 已實測驗證），可收窄為 `https://<網域>/api/user/*/mysekai*` 以減少上報量。
+推薦匹配規則：`https://<網域>/api/user/*/mysekai*`（CN 已實測驗證）。若你所在伺服器的 mysekai 介面路徑不同，請依實際路徑調整規則。
 
 手動 curl 驗證（gzip 壓縮的 HAR）：
 

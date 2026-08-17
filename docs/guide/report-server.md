@@ -36,7 +36,7 @@ The protocol has no built-in auth. Since Reqable cannot attach custom headers, p
 
 ## Reqable configuration
 
-- URL matching rule: `https://<game-api-host>/*` (or narrow it, e.g. `https://<game-api-host>/user/*/mysekai*`)
+- URL matching rule: `https://<game-api-host>/api/user/*/mysekai*`
 - Upload path: `http://<your-server>:9478/reqable/report`
 - Compression: gzip / brotli / zstd — all three are supported by the server
 
@@ -50,7 +50,7 @@ Game API domains (one per region):
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-Start with the domain-wide rule `https://<domain>/*` — unrelated sessions are skipped automatically by the server. If your region's mysekai API shares the `/api/user/*/mysekai*` path (verified on CN), narrow the rule to `https://<domain>/api/user/*/mysekai*` to cut upload volume.
+Recommended matching rule: `https://<domain>/api/user/*/mysekai*` (verified on CN). If your region's mysekai API path differs, adjust the rule accordingly.
 
 ## curl example
 

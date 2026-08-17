@@ -181,7 +181,7 @@ python cli.py server
 
 Reqable 側の設定例：
 
-- URL マッチングルール：`https://<ゲームAPIホスト>/*`（例：`https://<ゲームAPIホスト>/user/*/mysekai*` のように絞り込むことも可能）
+- URL マッチングルール：`https://<ゲームAPIホスト>/api/user/*/mysekai*`
 - アップロードパス：`http://<あなたのサーバー>:9478/reqable/report`
 - 圧縮アルゴリズム：gzip / brotli / zstd のいずれでも可（サーバーは 3 種類すべて対応）
 
@@ -195,7 +195,7 @@ Reqable 側の設定例：
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-まずドメイン全体のルール `https://<ドメイン>/*` から始めることをお勧めします。無関係なセッションはサーバー側で自動的にスキップされます。お使いのサーバーでも mysekai API が `/api/user/*/mysekai*` パス（CN で実測検証済み）なら、`https://<ドメイン>/api/user/*/mysekai*` に絞り込むとアップロード量を減らせます。
+推奨マッチングルール：`https://<ドメイン>/api/user/*/mysekai*`（CN で実測検証済み）。お使いのサーバーの mysekai API パスが異なる場合は、実際のパスに合わせてルールを調整してください。
 
 手動 curl 検証（gzip 圧縮の HAR）：
 

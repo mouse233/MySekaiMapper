@@ -181,7 +181,7 @@ python cli.py server
 
 Reqable 측 설정 예시:
 
-- URL 매칭 규칙: `https://<게임API호스트>/*`(또는 `https://<게임API호스트>/user/*/mysekai*`처럼 좁힐 수 있음)
+- URL 매칭 규칙: `https://<게임API호스트>/api/user/*/mysekai*`
 - 업로드 경로: `http://<내 서버>:9478/reqable/report`
 - 압축 알고리즘: gzip / brotli / zstd 모두 가능(서버가 3가지 모두 지원)
 
@@ -195,7 +195,7 @@ Reqable 측 설정 예시:
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-먼저 도메인 전체 규칙 `https://<도메인>/*`으로 시작하는 것을 권장합니다——무관한 세션은 서버가 자동으로 건너뜁니다. 사용 중인 서버의 mysekai API도 `/api/user/*/mysekai*` 경로(CN 실측 검증 완료)라면 `https://<도메인>/api/user/*/mysekai*`로 좁혀 업로드 양을 줄일 수 있습니다.
+권장 매칭 규칙: `https://<도메인>/api/user/*/mysekai*`(CN 실측 검증 완료). 사용 중인 서버의 mysekai API 경로가 다르면 실제 경로에 맞게 규칙을 조정하세요.
 
 수동 curl 검증(gzip 압축 HAR):
 
