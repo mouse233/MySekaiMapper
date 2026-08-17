@@ -6,7 +6,7 @@
 
 《世界计划 多彩舞台》（Project Sekai）MySekai（我的世界）采集点地图生成工具。
 
-**项目初衷**：搭配 MitM 模块或 Reqable 的「上报服务器」功能使用——抓包工具捕获游戏内 MySekai 数据包后，自动分片上传到本服务；服务端合并加密存档、解密并提取各站点的资源掉落坐标，绘制采集地图，再把结果（含稀有资源统计）推送到玩家的 Telegram / Bark（iOS Day.app），全程无需人工介入。
+**项目初衷**：搭配 MitM 模块或 Reqable 的「上报服务器」功能使用——抓包工具捕获游戏内 MySekai 数据包后，自动上传到本服务（一次 POST 即可，分片上传亦受支持）；服务端解密加密存档、提取各站点的资源掉落坐标，绘制采集地图，再把结果（含稀有资源统计）推送到玩家的 Telegram / Bark（iOS Day.app），全程无需人工介入。
 
 一次任务会生成 **4 张地图**：`site_5.png`（初始空地）、`site_6.png`（心愿沙滩）、`site_7.png`（烂漫花田）、`site_8.png`（忘却之所），外加一份 `rare_resources.txt` 稀有资源统计。
 
@@ -16,7 +16,7 @@
 
 ```
 游戏 API 响应 → MitM 模块 / Reqable 上报服务器（抓包捕获 mysekai 数据）
-   │  ① 自动分片上传 → server.py 自动合并（推荐，项目初衷）
+   │  ① 自动上传（一次 POST，分片亦支持）→ server.py 自动处理
    │  ② 或手动放置 .bin 存档 → cli.py generate
    ▼
 parser.py    AES-128-CBC 解密 + msgpack 解析 + 坐标旋转
@@ -80,7 +80,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 日常使用：启动上传服务；抓包客户端（MitM 模块 / Reqable 上报服务器）按「上传接口」分片上传后，自动生成地图并推送：
+3. 日常使用：启动上传服务，存档到达后自动生成地图并推送。两种抓包方式任选：
+
+   - **MitM 模块**：按「上传接口」上传存档
+   - **Reqable 上报服务器**：配置匹配规则与上报路径（见下文「Reqable 上报服务器」章节）
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -108,17 +111,17 @@ cp .env.example .env
 
 ## 上传接口
 
-客户端把捕获的 mysekai 响应体分片 POST 到 `POST /uploadMySekai`（手动用 curl 按同一协议调试亦可）。header 如下：
+客户端把捕获的 mysekai 响应体通过 `POST /uploadMySekai` 上传（一次 POST 即可；分片上传仅作兼容保留）。手动用 curl 按同一协议调试亦可。header 如下：
 
 | Header | 说明 |
 | --- | --- |
 | `X-Upload-Id` | 上传任务 ID（仅字母数字与 `-` / `_`，长度 1~64），必填 |
-| `X-Chunk-Index` | 分片序号，从 0 开始，必填 |
-| `X-Total-Chunks` | 总分片数（1~10），必填 |
+| `X-Chunk-Index` | 分片序号，从 0 开始（单片上传恒为 0），必填 |
+| `X-Total-Chunks` | 总分片数（1~10；单片上传填 1），必填 |
 | `X-Original-Url` | 客户端原始页面 URL，用于解析玩家 ID（如 `https://.../user/123456...`）；**可选**，缺失时玩家 ID 记为 `unknown` |
 | `X-Script-Version` | 客户端脚本版本号；服务端忽略该头，可不传 |
 
-请求体为原始二进制分片数据（无需 multipart）。
+请求体为原始二进制存档数据（无需 multipart）。
 
 限制：
 
@@ -126,19 +129,19 @@ cp .env.example .env
 - 单个分片 ≤1MB（`MAX_CHUNK_SIZE`，超限返回 413）
 - 总分片数 ≤10（`MAX_CHUNKS`）
 
-> 注意：总大小上限仅 1MB，**分片大小应明显小于 1MB 才有意义**（例如 256KB，10 片可传满 1MB）。若客户端用 1MB 分片，任何超过 1MB 的文件都会在第 2 片起被 413 拒绝，实际退化为只能单片上传。
+> 注意：当前存档约 200KB，**一次 POST 即可传完**。分片上传仅为兼容旧抓包客户端保留；若使用分片，每片应明显小于 1MB（例如 256KB），10 片可传满 1MB 上限。
 
 响应：
 
 | 状态码 | 含义 |
 | --- | --- |
-| `200` | 分片已接收，返回 `OK`；最后一片到达时服务端自动完成：合并存档 → 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 推送通知，全程无需人工介入 |
+| `200` | 存档已接收，返回 `OK`；服务端自动完成：合并存档（如分片）→ 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 推送通知，全程无需人工介入 |
 | `400` | 参数非法（upload id 格式错误、分片序号越界、总分片数不在 1~10） |
 | `413` | 超过大小限制（单分片超 1MB，或累计总大小超 1MB） |
 
 ### curl 示例
 
-存档 ≤1MB 时单片即可传完（最常用）：
+单次 POST（当前存档一次即可传完）：
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
@@ -147,6 +150,62 @@ curl -X POST http://127.0.0.1:9478/uploadMySekai \
   -H "X-Total-Chunks: 1" \
   -H "X-Original-Url: https://example.com/user/1234567890123456789" \
   --data-binary @mysekai.bin
+```
+
+## Reqable 上报服务器
+
+不依赖自定义抓包客户端，也可以直接用 Reqable 内置的「上报服务器」功能（Reqable v2.20.0+）：它会把每个已捕获的 HTTP 会话按 [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON 格式自动 POST 到你的服务器，可选 gzip / brotli / zstd 压缩。上报端点**默认开启**，与分片上传共存——`python cli.py server` 同时提供两个接口；设 `REPORT_ENABLED=0` 可关闭：
+
+```bash
+python cli.py server
+```
+
+配置（`.env`）：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `REPORT_ENABLED` | `1`（开启） | 设 `0` / `false` 关闭上报端点 |
+| `REPORT_PATH` | `/reqable/report` | 端点路径，填入 Reqable 的「上报路径」 |
+| `REPORT_MAX_SIZE` | `1` | HAR 请求体大小上限（MB，默认 1，与分片上传上限一致） |
+| `REPORT_TOKEN` | （空） | 可选共享令牌；设置后端点要求请求头 `X-Report-Token` 匹配 |
+
+每次上报，服务端会：
+
+1. 按 `Content-Encoding`（gzip / br / zstd）解压并解析 HAR。
+2. 遍历 `log.entries`，取第一个「响应体（兜底：请求体）能用 `AES_KEY` / `AES_IV` 解密并解析为 MySekai 存档」的会话——命中规则但与存档无关的流量会被跳过。
+3. 从会话 URL 解析玩家 ID（`/user/<id>`，与 `X-Original-Url` 同规则）。
+4. 存档保存到 `data/raw_mysekai/`，并启动与分片上传相同的 生成 → 归档 → 推送 流水线。
+
+注意：
+
+- Reqable 每个会话**只上报 1 次且失败不重试**，因此端点会尽快返回 `200`。请保持服务稳定，并留意 `[REPORT]` 日志。
+- 每次上报只处理 **1 份**存档（第一个有效条目），因此匹配多个接口的规则不会造成重复推送。
+- 安全：协议本身没有鉴权。Reqable 无法附加自定义请求头，建议把随机串拼进 `REPORT_PATH`（如 `/reqable/report/9f3a…`），或用反向代理 / 防火墙做访问限制，而不是依赖 `REPORT_TOKEN`。
+
+Reqable 侧配置示例：
+
+- URL 匹配规则：`https://<游戏API域名>/api/user/*/mysekai*`
+- 上报路径：`http://<你的服务器>:9478/reqable/report`
+- 压缩算法：gzip / brotli / zstd 均可（服务端三种都支持）
+
+五个服务器的游戏 API 域名：
+
+| 服务器 | 游戏 API 域名 |
+| --- | --- |
+| JP | `https://production-game-api.sekai.colorfulpalette.org` |
+| EN | `https://n-production-game-api.sekai-en.com` |
+| TW | `https://mk-zian-obt-cdn.bytedgame.com` |
+| KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
+| CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
+
+推荐匹配规则：`https://<域名>/api/user/*/mysekai*`（CN 已实测验证）。若你所在服务器的 mysekai 接口路径不同，请按实际路径调整规则。
+
+手动 curl 验证（gzip 压缩的 HAR）：
+
+```bash
+gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
+  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  --data-binary @-
 ```
 
 ## 推送机制
@@ -272,13 +331,13 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`：可选，上传任务 ID，默认 `unknown`。用于从 `data/raw_mysekai/` 反查玩家 ID：优先匹配 `mysekai_<玩家ID>_<task_id>.bin`，匹配不到时取 raw_mysekai 里最新的存档
 - 推送到 Telegram 还是 Bark 由 `config/push_map.json` 路由（未配置的玩家默认走 Telegram），详见「玩家推送路由」
 
-### server —— 启动分片上传服务
+### server —— 启动上传服务（分片上传 + Reqable 上报服务器）
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- 启动 FastAPI 服务，客户端向 `POST /uploadMySekai` 分片上传加密存档（接口细节见「上传接口」）
+- 启动 FastAPI 服务：客户端向 `POST /uploadMySekai` 上传加密存档（单片或分片；接口细节见「上传接口」）；Reqable 也可把 HAR 会话上报到内置上报端点（见上文「Reqable 上报服务器」章节）
 - 全部片到达后自动完成：合并存档 → 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 按玩家路由推送通知，无需人工介入
 - 默认监听 `9478` 端口；公网部署时建议通过反向代理暴露为 HTTPS，客户端脚本中写死的上传 URL（含端口）需与你的实际部署保持一致
 

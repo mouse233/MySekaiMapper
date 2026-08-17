@@ -52,7 +52,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 日常利用：アップロードサーバーを起動します。キャプチャクライアント（MitM モジュール / Reqable レポートサーバー）が[アップロードAPI](/ja-JP/guide/upload-api)に従って分割アップロードすると、自動的にマップが生成されプッシュされます：
+3. 日常利用：アップロードサーバーを起動すると、セーブデータの到着後に自動でマップが生成されプッシュされます。キャプチャ方法は次の 2 通りです：
+
+   - **MitM モジュール**：[アップロードAPI](/ja-JP/guide/upload-api)に従ってアップロード
+   - **Reqable レポートサーバー**：マッチングルールとアップロードパスを設定（[Reqable レポートサーバー](/ja-JP/guide/report-server)を参照）
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]

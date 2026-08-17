@@ -1,16 +1,16 @@
 # Upload API
 
-This endpoint receives the captured mysekai response body, uploaded in chunks to `POST /uploadMySekai` (the same protocol can also be debugged manually with curl). Headers:
+This endpoint receives the captured mysekai response body via `POST /uploadMySekai` (a single POST; chunked upload is kept for compatibility). The same protocol can be debugged manually with curl. Headers:
 
 | Header | Description |
 | --- | --- |
 | `X-Upload-Id` | Upload task ID (alphanumeric plus `-` / `_`, length 1~64), required |
-| `X-Chunk-Index` | Chunk index, starting at 0, required |
-| `X-Total-Chunks` | Total number of chunks (1~10), required |
+| `X-Chunk-Index` | Chunk index, starting at 0 (always 0 for a single POST), required |
+| `X-Total-Chunks` | Total number of chunks (1~10; use 1 for a single POST), required |
 | `X-Original-Url` | The client's original page URL, used to resolve the player ID (e.g. `https://.../user/123456...`); **optional** — if missing, the player ID is recorded as `unknown` |
 | `X-Script-Version` | Client script version; ignored by the server, may be omitted |
 
-The request body is the raw binary chunk data (no multipart needed).
+The request body is the raw binary save data (no multipart needed).
 
 ## Limits
 
@@ -19,20 +19,20 @@ The request body is the raw binary chunk data (no multipart needed).
 - Max 10 chunks (`MAX_CHUNKS`)
 
 ::: tip
-With a total cap of only 1MB, **chunk sizes should be well below 1MB to make sense** (e.g. 256KB, so 10 chunks fill the full 1MB). If a client uses 1MB chunks, any file over 1MB gets rejected with 413 starting from the 2nd chunk — effectively degrading to single-chunk uploads.
+Current saves are ~200KB, so a **single POST** is all you need. Chunked upload is kept for compatibility with older capture clients; if used, keep each chunk well below 1MB (e.g. 256KB) so 10 chunks fill the 1MB cap.
 :::
 
 ## Responses
 
 | Status | Meaning |
 | --- | --- |
-| `200` | Chunk received, returns `OK`; when the last chunk arrives, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications. No manual intervention. |
+| `200` | Save received, returns `OK`; the server automatically: merges the save (if chunked) → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications. No manual intervention. |
 | `400` | Invalid parameters (bad upload id format, chunk index out of range, total chunks not in 1~10) |
 | `413` | Size limit exceeded (single chunk over 1MB, or cumulative total over 1MB) |
 
 ## curl examples
 
-Saves ≤1MB can be uploaded in a single chunk (most common):
+Single POST (all current saves fit in one request):
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
@@ -43,7 +43,7 @@ curl -X POST http://127.0.0.1:9478/uploadMySekai \
   --data-binary @mysekai.bin
 ```
 
-Chunked upload (256KB per chunk; up to 10 chunks fill the 1MB limit):
+Chunked upload (optional, for compatibility; 256KB per chunk fills the 1MB cap with 10 chunks):
 
 ```bash
 file=mysekai.bin
@@ -65,4 +65,4 @@ done
 rm -f /tmp/ms_chunk_*
 ```
 
-A `200 OK` per chunk means it was accepted; once the last chunk arrives, the server starts merging and the rest of the pipeline automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
+A `200 OK` means the save was accepted; the pipeline (merge if chunked → generate → archive → notify) runs automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).

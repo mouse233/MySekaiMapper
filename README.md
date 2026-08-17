@@ -6,7 +6,7 @@
 
 A resource-gathering point map generator for the MySekai mode in *Project Sekai* (世界计划 多彩舞台).
 
-**Original intent**: designed to work with MitM modules or Reqable's "Report Server" feature — the capture tool grabs MySekai data packets from the game and automatically uploads them to this service in chunks. The server merges the encrypted saves, decrypts them, extracts the resource drop coordinates of every station, draws gathering maps, and pushes the results (including a rare-resource summary) to the player's Telegram / Bark (iOS Day.app) — no manual intervention required.
+**Original intent**: designed to work with MitM modules or Reqable's "Report Server" feature — the capture tool grabs MySekai data packets from the game and automatically uploads them to this service (single POST; chunked upload is also supported). The server decrypts the encrypted saves, extracts the resource drop coordinates of every station, draws gathering maps, and pushes the results (including a rare-resource summary) to the player's Telegram / Bark (iOS Day.app) — no manual intervention required.
 
 Each task produces **4 maps**: `site_5.png` (Grassland), `site_6.png` (Beach), `site_7.png` (Flower Garden), `site_8.png` (Memorial Place), plus a `rare_resources.txt` rare-resource summary.
 
@@ -16,7 +16,7 @@ This project has been tested and verified on the CN and TW servers operated by N
 
 ```
 Game API response → MitM module / Reqable Report Server (captures mysekai data)
-   │  ① Auto chunked upload → server.py merges automatically (recommended; the original intent)
+   │  ① Auto upload (single POST; chunked supported) → server.py processes automatically
    │  ② Or drop a .bin save manually → cli.py generate
    ▼
 parser.py    AES-128-CBC decrypt + msgpack parse + coordinate rotation
@@ -80,7 +80,10 @@ Use when: you just want maps and stats in Telegram without setting up anything e
    python cli.py notify data/latest <task_id>
    ```
 
-3. Daily use: start the upload service; the capture client (MitM module / Reqable Report Server) uploads chunks per the [Upload API](#upload-api), then maps are generated and pushed automatically:
+3. Daily use: start the upload service; saves are turned into maps and pushed automatically. Two capture clients are supported:
+
+   - **MitM module**: uploads the save per the [Upload API](#upload-api)
+   - **Reqable Report Server**: reports captured sessions to the built-in endpoint (see [Reqable Report Server](#reqable-report-server))
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -108,17 +111,17 @@ On top of Path A (the Telegram config may stay, or be left empty to push only to
 
 ## Upload API
 
-This endpoint receives the captured mysekai response body, uploaded in chunks to `POST /uploadMySekai` (the same protocol can also be debugged manually with curl). Headers:
+This endpoint receives the captured mysekai response body via `POST /uploadMySekai` (a single POST; chunked upload is kept for compatibility). The same protocol can be debugged manually with curl. Headers:
 
 | Header | Description |
 | --- | --- |
 | `X-Upload-Id` | Upload task ID (alphanumeric plus `-` / `_`, length 1~64), required |
-| `X-Chunk-Index` | Chunk index, starting at 0, required |
-| `X-Total-Chunks` | Total number of chunks (1~10), required |
+| `X-Chunk-Index` | Chunk index, starting at 0 (always 0 for a single POST), required |
+| `X-Total-Chunks` | Total number of chunks (1~10; use 1 for a single POST), required |
 | `X-Original-Url` | The client's original page URL, used to resolve the player ID (e.g. `https://.../user/123456...`); **optional** — if missing, the player ID is recorded as `unknown` |
 | `X-Script-Version` | Client script version; ignored by the server, may be omitted |
 
-The request body is the raw binary chunk data (no multipart needed).
+The request body is the raw binary save data (no multipart needed).
 
 Limits:
 
@@ -126,19 +129,19 @@ Limits:
 - Single chunk ≤1MB (`MAX_CHUNK_SIZE`, returns 413 if exceeded)
 - Max 10 chunks (`MAX_CHUNKS`)
 
-> Note: with a total cap of only 1MB, **chunk sizes should be well below 1MB to make sense** (e.g. 256KB, so 10 chunks fill the full 1MB). If a client uses 1MB chunks, any file over 1MB gets rejected with 413 starting from the 2nd chunk — effectively degrading to single-chunk uploads.
+> Note: current saves are ~200KB, so a **single POST** is all you need. Chunked upload is kept for compatibility with older capture clients; if used, keep each chunk well below 1MB (e.g. 256KB) so 10 chunks fill the 1MB cap.
 
 Responses:
 
 | Status | Meaning |
 | --- | --- |
-| `200` | Chunk received, returns `OK`; when the last chunk arrives, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications. No manual intervention. |
+| `200` | Save received, returns `OK`; the server automatically: merges the save (if chunked) → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications. No manual intervention. |
 | `400` | Invalid parameters (bad upload id format, chunk index out of range, total chunks not in 1~10) |
 | `413` | Size limit exceeded (single chunk over 1MB, or cumulative total over 1MB) |
 
 ### curl examples
 
-Saves ≤1MB can be uploaded in a single chunk (most common):
+Single POST (all current saves fit in one request):
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
@@ -149,7 +152,7 @@ curl -X POST http://127.0.0.1:9478/uploadMySekai \
   --data-binary @mysekai.bin
 ```
 
-Chunked upload (256KB per chunk; up to 10 chunks fill the 1MB limit):
+Chunked upload (optional, for compatibility; 256KB per chunk fills the 1MB cap with 10 chunks):
 
 ```bash
 file=mysekai.bin
@@ -171,7 +174,63 @@ done
 rm -f /tmp/ms_chunk_*
 ```
 
-A `200 OK` per chunk means it was accepted; once the last chunk arrives, the server starts merging and the rest of the pipeline automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
+A `200 OK` means the save was accepted; the pipeline (merge if chunked → generate → archive → notify) runs automatically. Replace `127.0.0.1:9478` with your actual service address; `X-Upload-Id` must match `^[a-zA-Z0-9_-]{1,64}$` (e.g. a random string from `openssl rand -hex 5`).
+
+## Reqable Report Server
+
+Instead of a custom capture client, you can use Reqable's built-in **Report Server** feature (Reqable v2.20.0+): it automatically POSTs each captured HTTP session to your server in the [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON format, optionally compressed with gzip / brotli / zstd. The report endpoint is **enabled by default** and coexists with the chunked upload API — `python cli.py server` serves both. Set `REPORT_ENABLED=0` to disable it:
+
+```bash
+python cli.py server
+```
+
+Configuration (`.env`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `REPORT_ENABLED` | `1` (on) | Set to `0` / `false` to disable the report endpoint |
+| `REPORT_PATH` | `/reqable/report` | Endpoint path; fill this into the Reqable "Upload Path" field |
+| `REPORT_MAX_SIZE` | `1` | Max HAR request body size in MB, same as the chunked upload limit |
+| `REPORT_TOKEN` | *(empty)* | Optional shared token; when set, the endpoint requires the `X-Report-Token` header |
+
+What the endpoint does with each report:
+
+1. Decompresses the body (`Content-Encoding: gzip` / `br` / `zstd`) and parses the HAR.
+2. Walks `log.entries` and takes the first session whose response body (fallback: request body) decrypts with `AES_KEY`/`AES_IV` and parses as a MySekai save — unrelated API traffic matching the rule is skipped.
+3. Resolves the player ID from the session URL (`/user/<id>`, same rule as `X-Original-Url`).
+4. Saves the archive to `data/raw_mysekai/` and launches the same generate → archive → notify pipeline as chunked uploads.
+
+Notes:
+
+- Reqable sends each session **exactly once and never retries**, so the endpoint answers `200` as fast as possible; make sure your server is stable and watch the `[REPORT]` log lines.
+- Only **one** archive per report is processed (the first valid entry), so a rule matching many endpoints won't cause duplicate pushes.
+- Security: the protocol has no built-in auth. Since Reqable cannot attach custom headers, prefer embedding a random secret in `REPORT_PATH` (e.g. `/reqable/report/9f3a…`) or restrict access with a reverse proxy / firewall instead of relying on `REPORT_TOKEN`.
+
+Example Reqable configuration:
+
+- URL matching rule: `https://<game-api-host>/api/user/*/mysekai*`
+- Upload path: `http://<your-server>:9478/reqable/report`
+- Compression: any of gzip / brotli / zstd (server supports all three)
+
+Game API domains (one per region):
+
+| Region | Game API domain |
+| --- | --- |
+| JP | `https://production-game-api.sekai.colorfulpalette.org` |
+| EN | `https://n-production-game-api.sekai-en.com` |
+| TW | `https://mk-zian-obt-cdn.bytedgame.com` |
+| KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
+| CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
+
+Recommended matching rule: `https://<domain>/api/user/*/mysekai*` (verified on CN). If your region's mysekai API path differs, adjust the rule accordingly.
+
+Manual curl test (gzip-compressed HAR):
+
+```bash
+gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
+  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  --data-binary @-
+```
 
 ## Push mechanism
 
@@ -296,13 +355,13 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`: optional upload task ID, defaults to `unknown`. Used to look up the player ID from `data/raw_mysekai/`: it first tries to match `mysekai_<playerID>_<task_id>.bin`, otherwise falls back to the newest save in raw_mysekai
 - Telegram vs Bark is decided by the routing in `config/push_map.json` (unconfigured players default to Telegram); see [Player push routing](#player-push-routing-optional)
 
-### server — start the chunked upload service
+### server — start the upload service (chunked upload + Reqable report server)
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- Starts the FastAPI service; clients chunk-upload encrypted saves to `POST /uploadMySekai` (protocol details: [Upload API](#upload-api))
+- Starts the FastAPI service; clients upload encrypted saves to `POST /uploadMySekai` (single POST or chunked; protocol details: [Upload API](#upload-api)), and Reqable can report HAR sessions to the built-in report endpoint (see [Reqable Report Server](#reqable-report-server))
 - When all chunks arrive, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications per player routing. No manual intervention.
 - Listens on `9478` by default; for public deployment, expose it as HTTPS via a reverse proxy — the hardcoded upload URL (including the port) in your client script must match your actual deployment
 

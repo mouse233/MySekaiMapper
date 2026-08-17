@@ -6,7 +6,7 @@
 
 프로젝트 세카이 컬러풀 스테이지! feat. 하츠네 미쿠(Project Sekai)의 MySekai(내 세카이) 수집 포인트 지도 생성 도구입니다.
 
-**프로젝트 취지**: MitM 모듈 또는 Reqable의「보고서 서버」기능과 함께 사용합니다——패킷 캡처 도구가 게임 내 MySekai 데이터 패킷을 캡처하면 자동으로 이 서비스에 분할 업로드하고, 서버가 암호화된 저장 파일을 병합·복호화하여 각 사이트의 자원 드롭 좌표를 추출한 뒤 수집 지도를 그려 그 결과(희귀 자원 통계 포함)를 플레이어의 Telegram / Bark(iOS Day.app)로 푸시합니다. 전 과정에서 수동 개입이 필요 없습니다.
+**프로젝트 취지**: MitM 모듈 또는 Reqable의「보고서 서버」기능과 함께 사용합니다——패킷 캡처 도구가 게임 내 MySekai 데이터 패킷을 캡처하면 자동으로 이 서비스에 업로드합니다(1회 POST로 전송 가능, 분할 업로드도 지원). 서버가 암호화된 저장 파일을 복호화하여 각 사이트의 자원 드롭 좌표를 추출한 뒤 수집 지도를 그려 그 결과(희귀 자원 통계 포함)를 플레이어의 Telegram / Bark(iOS Day.app)로 푸시합니다. 전 과정에서 수동 개입이 필요 없습니다.
 
 한 번의 작업으로 **4장의 지도**가 생성됩니다: `site_5.png`(시작의 공터), `site_6.png`(소원의 해변), `site_7.png`(화려한 꽃밭), `site_8.png`(잊혀진 곳), 그리고 `rare_resources.txt` 희귀 자원 통계 1개가 추가로 생성됩니다.
 
@@ -16,7 +16,7 @@
 
 ```
 게임 API 응답 → MitM 모듈 / Reqable 보고서 서버(패킷 캡처로 mysekai 데이터 확보)
-   │  ① 자동 분할 업로드 → server.py 자동 병합(권장, 프로젝트 취지)
+   │  ① 자동 업로드(1회 POST, 분할도 지원) → server.py 자동 처리
    │  ② 또는 .bin 저장 파일 직접 배치 → cli.py generate
    ▼
 parser.py    AES-128-CBC 복호화 + msgpack 파싱 + 좌표 회전
@@ -80,7 +80,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 일상 사용: 업로드 서버를 시작합니다. 패킷 캡처 클라이언트(MitM 모듈 / Reqable 보고서 서버)가「업로드 API」에 따라 분할 업로드하면 지도가 자동으로 생성되고 푸시됩니다:
+3. 일상 사용: 업로드 서버를 시작하면 세이브 도착 후 지도가 자동으로 생성되고 푸시됩니다. 캡처 방식은 두 가지입니다:
+
+   - **MitM 모듈**: 「업로드 API」에 따라 업로드
+   - **Reqable 보고서 서버**: 매칭 규칙과 업로드 경로 설정(아래의「Reqable 보고서 서버」장 참조)
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -108,17 +111,17 @@ cp .env.example .env
 
 ## 업로드 API
 
-클라이언트가 캡처한 mysekai 응답 본문을 분할해 `POST /uploadMySekai`로 POST합니다(수동으로 curl을 사용해 동일한 프로토콜로 디버깅해도 됩니다). header는 다음과 같습니다:
+클라이언트가 캡처한 mysekai 응답 본문을 `POST /uploadMySekai`로 업로드합니다(1회 POST로 전송 가능. 분할 업로드는 호환성을 위해 유지). 수동으로 curl을 사용해 동일한 프로토콜로 디버깅해도 됩니다. header는 다음과 같습니다:
 
 | Header | 설명 |
 | --- | --- |
 | `X-Upload-Id` | 업로드 작업 ID(영숫자와 `-` / `_`만 허용, 길이 1~64), 필수 |
-| `X-Chunk-Index` | 분할 번호, 0부터 시작, 필수 |
-| `X-Total-Chunks` | 전체 분할 수(1~10), 필수 |
+| `X-Chunk-Index` | 분할 번호, 0부터 시작(단일 POST에서는 항상 0), 필수 |
+| `X-Total-Chunks` | 전체 분할 수(1~10; 단일 POST에서는 1), 필수 |
 | `X-Original-Url` | 플레이어 ID를 파싱하는 데 사용하는 클라이언트 원본 페이지 URL(예: `https://.../user/123456...`); **선택**, 없으면 플레이어 ID는 `unknown`으로 기록됨 |
 | `X-Script-Version` | 클라이언트 스크립트 버전 번호; 서버는 이 헤더를 무시하므로 보내지 않아도 됨 |
 
-요청 본문은 원본 바이너리 분할 데이터입니다(multipart 불필요).
+요청 본문은 원본 바이너리 세이브 데이터입니다(multipart 불필요).
 
 제한:
 
@@ -126,19 +129,19 @@ cp .env.example .env
 - 개별 분할 ≤1MB(`MAX_CHUNK_SIZE`, 초과 시 413 반환)
 - 전체 분할 수 ≤10(`MAX_CHUNKS`)
 
-> 참고: 총 크기 상한은 1MB뿐이므로, **분할 크기는 1MB보다 훨씬 작아야 의미가 있습니다**(예: 256KB면 10개 분할로 1MB를 모두 보낼 수 있음). 클라이언트가 1MB 분할을 사용하면 1MB를 초과하는 모든 파일은 2번째 분할부터 413으로 거부되어 사실상 단일 분할 업로드로만 동작합니다.
+> 참고: 현재 세이브는 약 200KB이므로 **1회 POST로 전송이 끝납니다**. 분할 업로드는 기존 캡처 클라이언트와의 호환성을 위해 유지되며, 사용할 경우 각 분할을 1MB보다 훨씬 작게(예: 256KB) 유지하면 10개 분할로 1MB 상한을 모두 보낼 수 있습니다.
 
 응답:
 
 | 상태 코드 | 의미 |
 | --- | --- |
-| `200` | 분할을 수신하고 `OK`를 반환; 마지막 분할이 도착하면 서버가 자동으로 저장 파일 병합 → 지도 생성 → `data/archive/by-id/<user_id>/<타임스탬프>/`에 보관 → 알림 푸시까지 완료하며, 전 과정에서 수동 개입이 필요 없습니다 |
+| `200` | 세이브를 수신하고 `OK`를 반환; 서버가 자동으로 저장 파일 병합(분할인 경우) → 지도 생성 → `data/archive/by-id/<user_id>/<타임스탬프>/`에 보관 → 알림 푸시까지 완료하며, 전 과정에서 수동 개입이 필요 없습니다 |
 | `400` | 매개변수 오류(upload id 형식 오류, 분할 번호 범위 초과, 전체 분할 수가 1~10 범위 밖) |
 | `413` | 크기 제한 초과(개별 분할이 1MB 초과 또는 누적 총 크기가 1MB 초과) |
 
 ### curl 예시
 
-저장 파일이 ≤1MB이면 단일 분할로 전송이 끝납니다(가장 일반적):
+단일 POST(현재 세이브는 1회로 전송 완료):
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
@@ -147,6 +150,62 @@ curl -X POST http://127.0.0.1:9478/uploadMySekai \
   -H "X-Total-Chunks: 1" \
   -H "X-Original-Url: https://example.com/user/1234567890123456789" \
   --data-binary @mysekai.bin
+```
+
+## Reqable 보고서 서버
+
+커스텀 캡처 클라이언트 없이 Reqable의 내장「보고서 서버」기능(v2.20.0+)을 직접 사용할 수 있습니다. 캡처한 각 HTTP 세션을 [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON 형식으로 서버에 자동으로 POST하며, gzip / brotli / zstd 압축을 선택할 수 있습니다. 보고서 엔드포인트는 **기본적으로 활성화**되어 있으며 분할 업로드와 공존합니다——`python cli.py server`로 두 엔드포인트가 모두 제공됩니다. 비활성화하려면 `REPORT_ENABLED=0`을 설정합니다:
+
+```bash
+python cli.py server
+```
+
+설정(`.env`):
+
+| 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `REPORT_ENABLED` | `1`(활성화) | `0` / `false`로 설정하면 보고서 엔드포인트가 비활성화됩니다 |
+| `REPORT_PATH` | `/reqable/report` | 엔드포인트 경로. Reqable의「업로드 경로」란에 이 값을 입력합니다 |
+| `REPORT_MAX_SIZE` | `1` | HAR 본문 크기 상한(MB. 기본값 1, 분할 업로드 상한과 동일) |
+| `REPORT_TOKEN` | (비어 있음) | 선택적 공유 토큰. 설정하면 엔드포인트가 `X-Report-Token` 헤더를 요구합니다 |
+
+보고서를 받을 때마다 서버는:
+
+1. `Content-Encoding`(gzip / br / zstd)에 따라 본문을 압축 해제하고 HAR을 파싱합니다.
+2. `log.entries`를 순회하며「응답 본문(폴백: 요청 본문)이 `AES_KEY` / `AES_IV`로 복호화되고 MySekai 세이브로 파싱되는」첫 번째 세션을 채택합니다. 규칙에 매칭되더라도 세이브와 무관한 트래픽은 건너뜁니다.
+3. 세션 URL(`/user/<id>`, `X-Original-Url`과 같은 규칙)에서 플레이어 ID를 추출합니다.
+4. 세이브를 `data/raw_mysekai/`에 저장하고, 분할 업로드와 동일한「생성 → 아카이브 → 푸시」파이프라인을 시작합니다.
+
+참고:
+
+- Reqable은 각 세션을 **정확히 1번만 전송하고 실패 시 재시도하지 않습니다**. 따라서 엔드포인트는 가능한 한 빨리 `200`을 반환합니다. 서버를 안정적으로 유지하고 `[REPORT]` 로그를 확인하세요.
+- 보고서 1건당 처리되는 세이브는 **1개뿐**(첫 번째 유효 항목)이므로, 여러 엔드포인트에 매칭되는 규칙이라도 중복 푸시가 발생하지 않습니다.
+- 보안: 프로토콜 자체에는 인증이 없습니다. Reqable은 사용자 정의 헤더를 추가할 수 없으므로, `REPORT_TOKEN`에 의존하기보다 `REPORT_PATH`에 임의 문자열을 포함시키거나(예: `/reqable/report/9f3a…`) 리버스 프록시 / 방화벽으로 접근을 제한하는 것이 좋습니다.
+
+Reqable 측 설정 예시:
+
+- URL 매칭 규칙: `https://<게임API호스트>/api/user/*/mysekai*`
+- 업로드 경로: `http://<내 서버>:9478/reqable/report`
+- 압축 알고리즘: gzip / brotli / zstd 모두 가능(서버가 3가지 모두 지원)
+
+5개 서버의 게임 API 호스트:
+
+| 서버 | 게임 API 호스트 |
+| --- | --- |
+| JP | `https://production-game-api.sekai.colorfulpalette.org` |
+| EN | `https://n-production-game-api.sekai-en.com` |
+| TW | `https://mk-zian-obt-cdn.bytedgame.com` |
+| KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
+| CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
+
+권장 매칭 규칙: `https://<도메인>/api/user/*/mysekai*`(CN 실측 검증 완료). 사용 중인 서버의 mysekai API 경로가 다르면 실제 경로에 맞게 규칙을 조정하세요.
+
+수동 curl 검증(gzip 압축 HAR):
+
+```bash
+gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
+  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  --data-binary @-
 ```
 
 ## 푸시 메커니즘
@@ -272,13 +331,13 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`: 선택, 업로드 작업 ID, 기본값 `unknown`. `data/raw_mysekai/`에서 플레이어 ID를 역추적하는 데 사용: `mysekai_<플레이어ID>_<task_id>.bin`을 우선 매칭하고, 매칭되지 않으면 raw_mysekai의 최신 저장 파일을 사용
 - Telegram으로 푸시할지 Bark로 푸시할지는 `config/push_map.json` 라우팅이 결정합니다(미설정 플레이어는 기본적으로 Telegram), 자세한 내용은「플레이어 푸시 라우팅」참조
 
-### server —— 분할 업로드 서버 시작
+### server —— 업로드 서버 시작(분할 업로드 + Reqable 보고서 서버)
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- FastAPI 서비스를 시작하며, 클라이언트가 `POST /uploadMySekai`로 암호화된 저장 파일을 분할 업로드합니다(API 세부 사항은「업로드 API」참조)
+- FastAPI 서비스를 시작합니다. 클라이언트는 `POST /uploadMySekai`로 암호화된 저장 파일을 업로드하고(단일 POST 또는 분할. API 세부 사항은「업로드 API」참조), Reqable은 HAR 세션을 내장 보고서 엔드포인트로 보고할 수 있습니다(위의「Reqable 보고서 서버」장 참조)
 - 모든 분할이 도착하면 자동으로 저장 파일 병합 → 지도 생성 → `data/archive/by-id/<user_id>/<타임스탬프>/`에 보관 → 플레이어 라우팅에 따라 알림 푸시까지 완료하며, 수동 개입이 필요 없습니다
 - 기본적으로 `9478` 포트를 수신합니다. 공개 네트워크에 배포할 때는 리버스 프록시로 HTTPS로 노출하는 것을 권장하며, 클라이언트 스크립트에 하드코딩된 업로드 URL(포트 포함)은 실제 배포 환경과 일치해야 합니다
 

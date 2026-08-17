@@ -52,7 +52,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 일상 사용: 업로드 서버를 시작합니다. 패킷 캡처 클라이언트(MitM 모듈 / Reqable 보고서 서버)가 [업로드 API](/ko-KR/guide/upload-api)에 따라 분할 업로드하면 지도가 자동으로 생성되고 푸시됩니다:
+3. 일상 사용: 업로드 서버를 시작하면 세이브 도착 후 지도가 자동으로 생성되고 푸시됩니다. 캡처 방식은 두 가지입니다:
+
+   - **MitM 모듈**: [업로드 API](/ko-KR/guide/upload-api)에 따라 업로드
+   - **Reqable 보고서 서버**: 매칭 규칙과 업로드 경로 설정([Reqable 보고서 서버](/ko-KR/guide/report-server) 참조)
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]

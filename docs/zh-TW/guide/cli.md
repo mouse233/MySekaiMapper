@@ -28,13 +28,13 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`：選填，上傳任務 ID，預設 `unknown`。用於從 `data/raw_mysekai/` 反查玩家 ID：優先比對 `mysekai_<玩家ID>_<task_id>.bin`，比對不到時取 raw_mysekai 裡最新的存檔
 - 推播到 Telegram 還是 Bark 由 `config/push_map.json` 路由（未設定的玩家預設走 Telegram），詳見[玩家推播路由](/zh-TW/guide/routing)
 
-## server —— 啟動分片上傳服務
+## server —— 啟動上傳服務（分片上傳 + Reqable 上報伺服器）
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- 啟動 FastAPI 服務，用戶端向 `POST /uploadMySekai` 分片上傳加密存檔（介面細節見[上傳介面](/zh-TW/guide/upload-api)）
+- 啟動 FastAPI 服務：用戶端向 `POST /uploadMySekai` 上傳加密存檔（單片或分片；介面細節見[上傳介面](/zh-TW/guide/upload-api)）；Reqable 也可把 HAR 工作階段上報到內建上報端點（見[Reqable 上報伺服器](/zh-TW/guide/report-server)）
 - 全部片到達後自動完成：合併存檔 → 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 依玩家路由推播通知，無需人工介入
 - 預設監聽 `9478` 連接埠；公開網路部署時建議透過反向代理暴露為 HTTPS，用戶端腳本中寫死的上傳 URL（含連接埠）需與你的實際部署保持一致
 

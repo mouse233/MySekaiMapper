@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: 全自動パイプライン
-    details: キャプチャツール（MitM モジュール / Reqable レポートサーバー）が mysekai データパケットを分割アップロードし、サーバー側が自動で結合・復号・描画・プッシュまで実行。一切の手動介入は不要です。
+    details: キャプチャツール（MitM モジュール / Reqable レポートサーバー）が mysekai データパケットをアップロードし、サーバー側が自動で復号・描画・プッシュまで実行。一切の手動介入は不要です。
   - title: 4 枚のマップ + レア資源統計
     details: 1 回のタスクで site_5.png ~ site_8.png（さいしょの原っぱ、願いの砂浜、彩りの花畑、忘れ去られた場所）を生成し、さらに rare_resources.txt のレア資源統計も出力します。
   - title: Telegram 優先、Bark 対応
@@ -28,7 +28,7 @@ features:
 
 ```
 ゲーム API 応答 → MitM モジュール / Reqable レポートサーバー（mysekai データをキャプチャ）
-   │  ① 自動分割アップロード → server.py が自動結合（推奨、開発のきっかけ）
+   │  ① 自動アップロード（1 回の POST、分割にも対応）→ server.py が自動処理
    │  ② または .bin セーブデータを手動配置 → cli.py generate
    ▼
 parser.py    AES-128-CBC 復号 + msgpack 解析 + 座標回転
