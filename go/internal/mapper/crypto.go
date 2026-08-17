@@ -3,9 +3,14 @@ package mapper
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"errors"
 	"fmt"
 	"os"
 )
+
+// ErrAESNotConfigured identifies an absent or malformed local AES setup
+// without exposing key material in an error message.
+var ErrAESNotConfigured = errors.New("AES parameters are not configured")
 
 // AESParams reads the MySekai AES-128-CBC key material from the environment.
 // Values are deliberately not returned in error messages.
@@ -13,10 +18,10 @@ func AESParams() ([]byte, []byte, error) {
 	key := []byte(os.Getenv("AES_KEY"))
 	iv := []byte(os.Getenv("AES_IV"))
 	if len(key) == 0 || len(iv) == 0 {
-		return nil, nil, fmt.Errorf("AES_KEY / AES_IV not set")
+		return nil, nil, fmt.Errorf("%w: AES_KEY / AES_IV not set", ErrAESNotConfigured)
 	}
 	if len(key) != aes.BlockSize || len(iv) != aes.BlockSize {
-		return nil, nil, fmt.Errorf("AES_KEY and AES_IV must each be exactly 16 bytes")
+		return nil, nil, fmt.Errorf("%w: AES_KEY and AES_IV must each be exactly 16 bytes", ErrAESNotConfigured)
 	}
 	return key, iv, nil
 }

@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -79,6 +80,25 @@ func ParseArchive(plain []byte) ([]Drop, error) {
 		}
 	}
 	return drops, nil
+}
+
+// LooksLikeArchive verifies the encrypted payload has the MySekai top-level
+// structure. Malformed/non-archive candidate bodies are reported as false;
+// only absent or invalid local AES configuration is surfaced to callers.
+func LooksLikeArchive(raw []byte) (bool, error) {
+	plain, err := DecryptArchive(raw)
+	if err != nil {
+		if errors.Is(err, ErrAESNotConfigured) {
+			return false, err
+		}
+		return false, nil
+	}
+	var payload map[string]any
+	if err := msgpack.Unmarshal(plain, &payload); err != nil {
+		return false, nil
+	}
+	_, ok := payload["updatedResources"]
+	return ok, nil
 }
 
 func asStringMap(value any) (map[string]any, bool) {
