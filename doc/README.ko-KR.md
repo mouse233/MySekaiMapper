@@ -80,7 +80,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 일상 사용: 업로드 서버를 시작합니다. 패킷 캡처 클라이언트(MitM 모듈 / Reqable 보고서 서버)가「업로드 API」에 따라 분할 업로드하면 지도가 자동으로 생성되고 푸시됩니다:
+3. 일상 사용: 업로드 서버를 시작하면 세이브 도착 후 지도가 자동으로 생성되고 푸시됩니다. 캡처 방식은 두 가지입니다:
+
+   - **MitM 모듈**: 「업로드 API」에 따라 분할 업로드
+   - **Reqable 보고서 서버**: 매칭 규칙과 업로드 경로 설정(아래의「Reqable 보고서 서버」장 참조)
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -334,7 +337,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- FastAPI 서비스를 시작하며, 클라이언트가 `POST /uploadMySekai`로 암호화된 저장 파일을 분할 업로드합니다(API 세부 사항은「업로드 API」참조)
+- FastAPI 서비스를 시작합니다. 클라이언트는 `POST /uploadMySekai`로 암호화된 저장 파일을 분할 업로드하고(API 세부 사항은「업로드 API」참조), Reqable은 HAR 세션을 내장 보고서 엔드포인트로 보고할 수 있습니다(위의「Reqable 보고서 서버」장 참조)
 - 모든 분할이 도착하면 자동으로 저장 파일 병합 → 지도 생성 → `data/archive/by-id/<user_id>/<타임스탬프>/`에 보관 → 플레이어 라우팅에 따라 알림 푸시까지 완료하며, 수동 개입이 필요 없습니다
 - 기본적으로 `9478` 포트를 수신합니다. 공개 네트워크에 배포할 때는 리버스 프록시로 HTTPS로 노출하는 것을 권장하며, 클라이언트 스크립트에 하드코딩된 업로드 URL(포트 포함)은 실제 배포 환경과 일치해야 합니다
 

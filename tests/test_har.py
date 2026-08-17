@@ -175,6 +175,9 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("AES_KEY", KEY.decode("ascii"))
     monkeypatch.setenv("AES_IV", IV.decode("ascii"))
     monkeypatch.setattr(config, "RAW_DIR", tmp_path)
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    monkeypatch.setattr(config, "TMP_DIR", tmp_dir)
 
     async def _noop_run(bin_path, task_id, user_id):
         pass
@@ -299,3 +302,58 @@ def test_report_body_too_large_returns_413(client, monkeypatch):
     monkeypatch.setattr(config, "REPORT_MAX_SIZE", 100)
     r = client.post(REPORT_URL, content=b"x" * 101)
     assert r.status_code == 413
+
+
+# ---------- 分片上传回归 ----------
+
+def test_chunked_upload_merges_and_launches(client, tmp_path):
+    """回归:_save_and_launch 重构后,分片合并流程必须与改动前行为一致。"""
+    parts = [b"part-0", b"part-1", b"part-2"]
+    upload_id = "regression01"
+    for i, part in enumerate(parts):
+        r = client.post(
+            "/uploadMySekai",
+            content=part,
+            headers={
+                "X-Upload-Id": upload_id,
+                "X-Chunk-Index": str(i),
+                "X-Total-Chunks": str(len(parts)),
+                "X-Original-Url": "https://example.com/user/888/mysekai",
+            },
+        )
+        assert r.status_code == 200
+        assert r.text == "OK"
+
+    files = list(tmp_path.glob("mysekai_888_regression01.bin"))
+    assert len(files) == 1
+    assert files[0].read_bytes() == b"".join(parts)
+    # 合并完成后分片暂存目录应被清理
+    assert not (tmp_path / "tmp" / upload_id).exists()
+
+
+def test_chunked_upload_rejects_invalid_params(client, tmp_path):
+    # upload id 含非法字符
+    r = client.post(
+        "/uploadMySekai",
+        content=b"x",
+        headers={"X-Upload-Id": "bad id!", "X-Chunk-Index": "0", "X-Total-Chunks": "1"},
+    )
+    assert r.status_code == 400
+
+    # 总分片数超出限制
+    r = client.post(
+        "/uploadMySekai",
+        content=b"x",
+        headers={"X-Upload-Id": "okid123", "X-Chunk-Index": "0", "X-Total-Chunks": "99"},
+    )
+    assert r.status_code == 400
+
+    # 分片序号越界
+    r = client.post(
+        "/uploadMySekai",
+        content=b"x",
+        headers={"X-Upload-Id": "okid123", "X-Chunk-Index": "5", "X-Total-Chunks": "3"},
+    )
+    assert r.status_code == 400
+
+    assert list(tmp_path.glob("*.bin")) == []

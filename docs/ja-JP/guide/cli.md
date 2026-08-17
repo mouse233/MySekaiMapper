@@ -28,13 +28,13 @@ python cli.py notify <output_dir> [task_id]
 - `[task_id]`：任意、アップロードタスク ID、デフォルトは `unknown`。`data/raw_mysekai/` からプレイヤー ID を逆引きするために使用します：`mysekai_<プレイヤーID>_<task_id>.bin` を優先的にマッチさせ、一致しない場合は raw_mysekai 内の最新セーブデータを使用します
 - Telegram と Bark のどちらにプッシュするかは `config/push_map.json` のルーティングで決まります（未設定のプレイヤーはデフォルトで Telegram）。詳細は[プレイヤープッシュルーティング](/ja-JP/guide/routing)を参照
 
-## server —— 分割アップロードサービスを起動
+## server —— アップロードサービスを起動（分割アップロード + Reqable レポートサーバー）
 
 ```bash
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- FastAPI サービスを起動し、クライアントが `POST /uploadMySekai` へ暗号化セーブデータを分割アップロードします（API の詳細は[アップロードAPI](/ja-JP/guide/upload-api)を参照）
+- FastAPI サービスを起動します。クライアントは `POST /uploadMySekai` へ暗号化セーブデータを分割アップロード（API の詳細は[アップロードAPI](/ja-JP/guide/upload-api)を参照）、Reqable は HAR セッションを内蔵レポートエンドポイントへ報告できます（[Reqable レポートサーバー](/ja-JP/guide/report-server)を参照）
 - 全チャンク到着後、自動で完了します：セーブデータの結合 → マップ生成 → `data/archive/by-id/<user_id>/<タイムスタンプ>/` へのアーカイブ → プレイヤールーティングに従った通知のプッシュ。手動介入は不要
 - デフォルトでは `9478` ポートをリッスンします。公開ネットワークにデプロイする場合は、リバースプロキシ経由で HTTPS として公開することを推奨します。クライアントスクリプトにハードコードされたアップロード URL（ポート含む）は、実際のデプロイ構成と一致させる必要があります
 

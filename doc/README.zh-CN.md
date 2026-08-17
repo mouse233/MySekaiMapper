@@ -80,7 +80,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 日常使用：启动上传服务；抓包客户端（MitM 模块 / Reqable 上报服务器）按「上传接口」分片上传后，自动生成地图并推送：
+3. 日常使用：启动上传服务，存档到达后自动生成地图并推送。两种抓包方式任选：
+
+   - **MitM 模块**：按「上传接口」分片上传存档
+   - **Reqable 上报服务器**：配置匹配规则与上报路径（见下文「Reqable 上报服务器」章节）
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -334,7 +337,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- 启动 FastAPI 服务，客户端向 `POST /uploadMySekai` 分片上传加密存档（接口细节见「上传接口」）
+- 启动 FastAPI 服务：客户端向 `POST /uploadMySekai` 分片上传加密存档（接口细节见「上传接口」）；Reqable 也可把 HAR 会话上报到内置上报端点（见上文「Reqable 上报服务器」章节）
 - 全部片到达后自动完成：合并存档 → 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 按玩家路由推送通知，无需人工介入
 - 默认监听 `9478` 端口；公网部署时建议通过反向代理暴露为 HTTPS，客户端脚本中写死的上传 URL（含端口）需与你的实际部署保持一致
 

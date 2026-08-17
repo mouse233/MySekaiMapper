@@ -52,7 +52,10 @@ cp .env.example .env
    python cli.py notify data/latest <task_id>
    ```
 
-3. 日常使用：啟動上傳服務；抓封包用戶端（MitM 模組 / Reqable 上報伺服器）按[上傳介面](/zh-TW/guide/upload-api)分片上傳後，自動產生地圖並推播：
+3. 日常使用：啟動上傳服務，存檔送達後自動產生地圖並推播。兩種抓封包方式任選：
+
+   - **MitM 模組**：按[上傳介面](/zh-TW/guide/upload-api)分片上傳存檔
+   - **Reqable 上報伺服器**：設定匹配規則與上報路徑（見[Reqable 上報伺服器](/zh-TW/guide/report-server)）
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]

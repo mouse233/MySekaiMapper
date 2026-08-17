@@ -52,7 +52,10 @@ Use when: you just want maps and stats in Telegram without setting up anything e
    python cli.py notify data/latest <task_id>
    ```
 
-3. Daily use: start the upload service; the capture client (MitM module / Reqable Report Server) uploads chunks per the [Upload API](/guide/upload-api), then maps are generated and pushed automatically:
+3. Daily use: start the upload service; saves are turned into maps and pushed automatically. Two capture clients are supported:
+
+   - **MitM module**: chunk-uploads the save per the [Upload API](/guide/upload-api)
+   - **Reqable Report Server**: reports captured sessions to the built-in endpoint (see [Reqable Report Server](/guide/report-server))
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]

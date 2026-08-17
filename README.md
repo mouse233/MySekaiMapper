@@ -80,7 +80,10 @@ Use when: you just want maps and stats in Telegram without setting up anything e
    python cli.py notify data/latest <task_id>
    ```
 
-3. Daily use: start the upload service; the capture client (MitM module / Reqable Report Server) uploads chunks per the [Upload API](#upload-api), then maps are generated and pushed automatically:
+3. Daily use: start the upload service; saves are turned into maps and pushed automatically. Two capture clients are supported:
+
+   - **MitM module**: chunk-uploads the save per the [Upload API](#upload-api)
+   - **Reqable Report Server**: reports captured sessions to the built-in endpoint (see [Reqable Report Server](#reqable-report-server))
 
    ```bash
    python cli.py server [--host 0.0.0.0] [--port 9478]
@@ -358,7 +361,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- Starts the FastAPI service; clients chunk-upload encrypted saves to `POST /uploadMySekai` (protocol details: [Upload API](#upload-api))
+- Starts the FastAPI service; clients chunk-upload encrypted saves to `POST /uploadMySekai` (protocol details: [Upload API](#upload-api)), and Reqable can report HAR sessions to the built-in report endpoint (see [Reqable Report Server](#reqable-report-server))
 - When all chunks arrive, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications per player routing. No manual intervention.
 - Listens on `9478` by default; for public deployment, expose it as HTTPS via a reverse proxy — the hardcoded upload URL (including the port) in your client script must match your actual deployment
 
