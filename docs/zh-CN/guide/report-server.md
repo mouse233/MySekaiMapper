@@ -12,7 +12,7 @@ python cli.py server
 | --- | --- | --- |
 | `REPORT_ENABLED` | `1`（开启） | 设 `0` / `false` 关闭上报端点 |
 | `REPORT_PATH` | `/reqable/report` | 端点路径，填入 Reqable 的「上报路径」 |
-| `REPORT_MAX_SIZE` | `8` | HAR 请求体大小上限（MB）；存档本身需 ≤1MB，base64 膨胀约 33% |
+| `REPORT_MAX_SIZE` | `1` | HAR 请求体大小上限（MB，默认 1，与分片上传上限一致） |
 | `REPORT_TOKEN` | （空） | 可选共享令牌；设置后端点要求请求头 `X-Report-Token` 匹配 |
 
 ## 处理流程

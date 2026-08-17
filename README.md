@@ -190,7 +190,7 @@ Configuration (`.env`):
 | --- | --- | --- |
 | `REPORT_ENABLED` | `1` (on) | Set to `0` / `false` to disable the report endpoint |
 | `REPORT_PATH` | `/reqable/report` | Endpoint path; fill this into the Reqable "Upload Path" field |
-| `REPORT_MAX_SIZE` | `8` | Max HAR body size in MB (the save itself must stay ≤1MB; base64 inflates it ~33%) |
+| `REPORT_MAX_SIZE` | `1` | Max HAR request body size in MB, same as the chunked upload limit |
 | `REPORT_TOKEN` | *(empty)* | Optional shared token; when set, the endpoint requires the `X-Report-Token` header |
 
 What the endpoint does with each report:

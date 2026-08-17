@@ -166,7 +166,7 @@ python cli.py server
 | --- | --- | --- |
 | `REPORT_ENABLED` | `1`(활성화) | `0` / `false`로 설정하면 보고서 엔드포인트가 비활성화됩니다 |
 | `REPORT_PATH` | `/reqable/report` | 엔드포인트 경로. Reqable의「업로드 경로」란에 이 값을 입력합니다 |
-| `REPORT_MAX_SIZE` | `8` | HAR 본문 크기 상한(MB). 세이브 데이터 자체는 ≤1MB여야 하며, base64로 약 33% 커집니다 |
+| `REPORT_MAX_SIZE` | `1` | HAR 본문 크기 상한(MB. 기본값 1, 분할 업로드 상한과 동일) |
 | `REPORT_TOKEN` | (비어 있음) | 선택적 공유 토큰. 설정하면 엔드포인트가 `X-Report-Token` 헤더를 요구합니다 |
 
 보고서를 받을 때마다 서버는:

@@ -42,8 +42,8 @@ FALLBACK_IMAGE_BASE = os.environ.get("FALLBACK_IMAGE_BASE")
 # 功能按 HAR 格式上报的会话数据(支持 gzip / brotli / zstd 压缩)。
 REPORT_ENABLED = os.environ.get("REPORT_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 REPORT_PATH = os.environ.get("REPORT_PATH", "/reqable/report")
-# HAR JSON 请求体大小上限(默认 8MB;存档 ≤1MB,base64 膨胀约 33%,留足余量)
-REPORT_MAX_SIZE = int(os.environ.get("REPORT_MAX_SIZE", "8")) * 1024 * 1024
+# HAR JSON 请求体大小上限(默认 1MB,与分片上传的 MAX_TOTAL_SIZE 一致)
+REPORT_MAX_SIZE = int(os.environ.get("REPORT_MAX_SIZE", "1")) * 1024 * 1024
 # 可选共享令牌:设置后上报端点要求请求头 X-Report-Token 与之匹配
 # (Reqable 本身无法附加自定义请求头,若用它上报建议把随机串拼进 REPORT_PATH 代替,
 #  或依靠反向代理 IP 白名单防护)

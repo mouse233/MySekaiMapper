@@ -12,7 +12,7 @@ python cli.py server
 | --- | --- | --- |
 | `REPORT_ENABLED` | `1`（有効） | `0` / `false` を設定するとレポートエンドポイントが無効になります |
 | `REPORT_PATH` | `/reqable/report` | エンドポイントのパス。Reqable の「アップロードパス」欄にこの値を入力します |
-| `REPORT_MAX_SIZE` | `8` | HAR ボディのサイズ上限（MB）。セーブデータ自体は ≤1MB である必要があり、base64 で約 33% 膨張します |
+| `REPORT_MAX_SIZE` | `1` | HAR ボディのサイズ上限（MB。デフォルト 1、分割アップロードの上限と同じ） |
 | `REPORT_TOKEN` | （空） | 任意の共有トークン。設定するとエンドポイントは `X-Report-Token` ヘッダーを要求します |
 
 ## 処理の流れ
