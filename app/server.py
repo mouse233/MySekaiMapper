@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,26 @@ from . import config, notify as notify_mod, parser as parser_mod
 from . import har as har_mod
 from .render import generate as render_generate
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """uvicorn 启动完成后(INFO 日志下方)打印两个 API 端点的提示。"""
+
+    async def _print_banner():
+        await asyncio.sleep(1.0)
+        print_api_banner(
+            getattr(_app.state, "host", "0.0.0.0"),
+            getattr(_app.state, "port", 9478),
+        )
+
+    task = asyncio.create_task(_print_banner())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # === 安全限制参数 ===
 MAX_TOTAL_SIZE = 1 * 1024 * 1024    # 1MB 总大小
@@ -115,13 +135,16 @@ def _looks_like_archive(data: bytes) -> bool:
 
 
 def print_api_banner(host: str = "0.0.0.0", port: int = 9478):
-    """启动时打印两个 API 端点的提示信息。"""
+    """打印两个 API 端点的提示信息(英文)。
+
+    REPORT_ENABLED=0 时不打印 Reqable 上报服务器那一行。
+    """
     base = f"http://{host}:{port}"
-    status = "已开启" if config.REPORT_ENABLED else "已关闭(REPORT_ENABLED=0)"
-    print("-" * 62)
-    print(f"[API] 分片上传(抓包客户端):  POST {base}/uploadMySekai")
-    print(f"[API] Reqable 上报服务器:    POST {base}{config.REPORT_PATH}  [{status}]")
-    print("-" * 62)
+    print("-" * 64)
+    print(f"[API] {'Chunked upload (capture client):':<33}POST {base}/uploadMySekai")
+    if config.REPORT_ENABLED:
+        print(f"[API] {'Reqable report server:':<33}POST {base}{config.REPORT_PATH}")
+    print("-" * 64)
 
 
 @app.post("/uploadMySekai")
@@ -254,5 +277,6 @@ async def reqable_report(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    print_api_banner("0.0.0.0", 9478)
+    app.state.host = "0.0.0.0"
+    app.state.port = 9478
     uvicorn.run(app, host="0.0.0.0", port=9478)

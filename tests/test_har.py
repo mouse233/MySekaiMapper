@@ -158,15 +158,14 @@ def test_api_banner_prints_both_endpoints(capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "POST http://0.0.0.0:9478/uploadMySekai" in out
     assert "POST http://0.0.0.0:9478/reqable/report" in out
-    assert "已开启" in out
 
 
-def test_api_banner_shows_disabled_state(capsys, monkeypatch):
+def test_api_banner_omits_report_when_disabled(capsys, monkeypatch):
     monkeypatch.setattr(config, "REPORT_ENABLED", False)
     server.print_api_banner("127.0.0.1", 9999)
     out = capsys.readouterr().out
     assert "http://127.0.0.1:9999/uploadMySekai" in out
-    assert "已关闭" in out
+    assert "/reqable/report" not in out
 
 
 # ---------- 上报端点 ----------
