@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: 완전 자동 파이프라인
-    details: 패킷 캡처 도구(MitM 모듈 / Reqable 보고서 서버)가 MySekai 데이터 패킷을 분할 업로드하면 서버가 자동으로 병합·복호화·지도 생성·푸시까지 처리하며, 전 과정에서 수동 개입이 필요 없습니다.
+    details: 패킷 캡처 도구(MitM 모듈 / Reqable 보고서 서버)가 MySekai 데이터 패킷을 업로드하면 서버가 자동으로 복호화·지도 생성·푸시까지 처리하며, 전 과정에서 수동 개입이 필요 없습니다.
   - title: 4장의 지도 + 희귀 자원 통계
     details: 작업마다 site_5.png ~ site_8.png(시작의 공터, 소원의 해변, 화려한 꽃밭, 잊혀진 곳)와 rare_resources.txt 희귀 자원 통계를 생성합니다.
   - title: Telegram 우선, Bark 지원
@@ -28,7 +28,7 @@ features:
 
 ```
 게임 API 응답 → MitM 모듈 / Reqable 보고서 서버(패킷 캡처로 mysekai 데이터 확보)
-   │  ① 자동 분할 업로드 → server.py 자동 병합(권장, 프로젝트 취지)
+   │  ① 자동 업로드(1회 POST, 분할도 지원) → server.py 자동 처리
    │  ② 또는 .bin 저장 파일 직접 배치 → cli.py generate
    ▼
 parser.py    AES-128-CBC 복호화 + msgpack 파싱 + 좌표 회전

@@ -54,7 +54,7 @@ cp .env.example .env
 
 3. 日常使用：啟動上傳服務，存檔送達後自動產生地圖並推播。兩種抓封包方式任選：
 
-   - **MitM 模組**：按[上傳介面](/zh-TW/guide/upload-api)分片上傳存檔
+   - **MitM 模組**：按[上傳介面](/zh-TW/guide/upload-api)上傳存檔
    - **Reqable 上報伺服器**：設定匹配規則與上報路徑（見[Reqable 上報伺服器](/zh-TW/guide/report-server)）
 
    ```bash

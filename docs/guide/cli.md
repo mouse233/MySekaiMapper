@@ -34,7 +34,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- Starts the FastAPI service; clients chunk-upload encrypted saves to `POST /uploadMySekai` (protocol details: [Upload API](/guide/upload-api)), and Reqable can report HAR sessions to the built-in report endpoint (see [Reqable Report Server](/guide/report-server))
+- Starts the FastAPI service; clients upload encrypted saves to `POST /uploadMySekai` (single POST or chunked; protocol details: [Upload API](/guide/upload-api)), and Reqable can report HAR sessions to the built-in report endpoint (see [Reqable Report Server](/guide/report-server))
 - When all chunks arrive, the server automatically: merges the save → generates maps → archives to `data/archive/by-id/<user_id>/<timestamp>/` → pushes notifications per player routing. No manual intervention.
 - Listens on `9478` by default; for public deployment, expose it as HTTPS via a reverse proxy — the hardcoded upload URL (including the port) in your client script must match your actual deployment
 

@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: Zero-touch pipeline
-    details: Capture tools (MitM module / Reqable Report Server) upload MySekai packets in chunks; the server merges, decrypts, draws maps, and pushes results automatically — no manual intervention.
+    details: Capture tools (MitM module / Reqable Report Server) upload MySekai packets; the server decrypts, draws maps, and pushes results automatically — no manual intervention.
   - title: 4 maps + rare stats
     details: Every task produces site_5.png ~ site_8.png (Grassland, Beach, Flower Garden, Memorial Place) plus a rare_resources.txt summary.
   - title: Telegram-first, Bark-ready
@@ -28,7 +28,7 @@ features:
 
 ```
 Game API response → MitM module / Reqable Report Server (captures mysekai data)
-   │  ① Auto chunked upload → server.py merges automatically (recommended; the original intent)
+   │  ① Auto upload (single POST; chunked supported) → server.py processes automatically
    │  ② Or drop a .bin save manually → cli.py generate
    ▼
 parser.py    AES-128-CBC decrypt + msgpack parse + coordinate rotation

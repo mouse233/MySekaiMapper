@@ -34,7 +34,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- FastAPI サービスを起動します。クライアントは `POST /uploadMySekai` へ暗号化セーブデータを分割アップロード（API の詳細は[アップロードAPI](/ja-JP/guide/upload-api)を参照）、Reqable は HAR セッションを内蔵レポートエンドポイントへ報告できます（[Reqable レポートサーバー](/ja-JP/guide/report-server)を参照）
+- FastAPI サービスを起動します。クライアントは `POST /uploadMySekai` へ暗号化セーブデータをアップロード（単一 POST または分割。API の詳細は[アップロードAPI](/ja-JP/guide/upload-api)を参照）、Reqable は HAR セッションを内蔵レポートエンドポイントへ報告できます（[Reqable レポートサーバー](/ja-JP/guide/report-server)を参照）
 - 全チャンク到着後、自動で完了します：セーブデータの結合 → マップ生成 → `data/archive/by-id/<user_id>/<タイムスタンプ>/` へのアーカイブ → プレイヤールーティングに従った通知のプッシュ。手動介入は不要
 - デフォルトでは `9478` ポートをリッスンします。公開ネットワークにデプロイする場合は、リバースプロキシ経由で HTTPS として公開することを推奨します。クライアントスクリプトにハードコードされたアップロード URL（ポート含む）は、実際のデプロイ構成と一致させる必要があります
 

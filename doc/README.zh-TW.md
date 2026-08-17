@@ -5,7 +5,7 @@
 
 《世界計畫 繽紛舞台！feat. 初音未來》（Project Sekai）MySekai（我的世界）採集點地圖產生工具。
 
-**專案初衷**：搭配 MitM 模組或 Reqable 的「上報伺服器」功能使用——抓封包工具擷取遊戲內 MySekai 資料封包後，自動分片上傳到本服務；伺服器端合併加密存檔、解密並擷取各站點的資源掉落座標，繪製採集地圖，再把結果（含稀有資源統計）推播到玩家的 Telegram / Bark（iOS Day.app），全程無需人工介入。
+**專案初衷**：搭配 MitM 模組或 Reqable 的「上報伺服器」功能使用——抓封包工具擷取遊戲內 MySekai 資料封包後，自動上傳到本服務（一次 POST 即可，分片上傳亦受支援）；伺服器端解密加密存檔、擷取各站點的資源掉落座標，繪製採集地圖，再把結果（含稀有資源統計）推播到玩家的 Telegram / Bark（iOS Day.app），全程無需人工介入。
 
 一次任務會產生 **4 張地圖**：`site_5.png`（初始空地）、`site_6.png`（心願沙灘）、`site_7.png`（爛漫花田）、`site_8.png`（忘卻之所），外加一份 `rare_resources.txt` 稀有資源統計。
 
@@ -15,7 +15,7 @@
 
 ```
 遊戲 API 回應 → MitM 模組 / Reqable 上報伺服器（抓封包擷取 mysekai 資料）
-   │  ① 自動分片上傳 → server.py 自動合併（推薦，專案初衷）
+   │  ① 自動上傳（一次 POST，分片亦支援）→ server.py 自動處理
    │  ② 或手動放置 .bin 存檔 → cli.py generate
    ▼
 parser.py    AES-128-CBC 解密 + msgpack 解析 + 座標旋轉
@@ -81,7 +81,7 @@ cp .env.example .env
 
 3. 日常使用：啟動上傳服務，存檔送達後自動產生地圖並推播。兩種抓封包方式任選：
 
-   - **MitM 模組**：按「上傳介面」分片上傳存檔
+   - **MitM 模組**：按「上傳介面」上傳存檔
    - **Reqable 上報伺服器**：設定匹配規則與上報路徑（見下文「Reqable 上報伺服器」章節）
 
    ```bash
@@ -110,17 +110,17 @@ cp .env.example .env
 
 ## 上傳介面
 
-用戶端把擷取的 mysekai 回應主體分片 POST 到 `POST /uploadMySekai`（手動用 curl 依同一協定除錯亦可）。header 如下：
+用戶端把擷取的 mysekai 回應主體透過 `POST /uploadMySekai` 上傳（一次 POST 即可；分片上傳僅作相容保留）。手動用 curl 依同一協定除錯亦可。header 如下：
 
 | Header | 說明 |
 | --- | --- |
 | `X-Upload-Id` | 上傳任務 ID（僅字母數字與 `-` / `_`，長度 1~64），必填 |
-| `X-Chunk-Index` | 分片序號，從 0 開始，必填 |
-| `X-Total-Chunks` | 總分片數（1~10），必填 |
+| `X-Chunk-Index` | 分片序號，從 0 開始（單片上傳恆為 0），必填 |
+| `X-Total-Chunks` | 總分片數（1~10；單片上傳填 1），必填 |
 | `X-Original-Url` | 用戶端原始頁面 URL，用於解析玩家 ID（如 `https://.../user/123456...`）；**選填**，缺失時玩家 ID 記為 `unknown` |
 | `X-Script-Version` | 用戶端腳本版本號；伺服器端忽略該 header，可不傳 |
 
-請求主體為原始二進位分片資料（無需 multipart）。
+請求主體為原始二進位存檔資料（無需 multipart）。
 
 限制：
 
@@ -128,19 +128,19 @@ cp .env.example .env
 - 單一分片 ≤1MB（`MAX_CHUNK_SIZE`，超出限制回傳 413）
 - 總分片數 ≤10（`MAX_CHUNKS`）
 
-> 注意：總大小上限僅 1MB，**分片大小應明顯小於 1MB 才有意義**（例如 256KB，10 片可傳滿 1MB）。若用戶端用 1MB 分片，任何超過 1MB 的檔案都會從第 2 片起被 413 拒絕，實際上退化成只能單片上傳。
+> 注意：目前存檔約 200KB，**一次 POST 即可傳完**。分片上傳僅為相容舊抓封包用戶端保留；若使用分片，每片應明顯小於 1MB（例如 256KB），10 片可傳滿 1MB 上限。
 
 回應：
 
 | 狀態碼 | 含義 |
 | --- | --- |
-| `200` | 分片已接收，回傳 `OK`；最後一片到達時伺服器端自動完成：合併存檔 → 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 推播通知，全程無需人工介入 |
+| `200` | 存檔已接收，回傳 `OK`；伺服器端自動完成：合併存檔（如分片）→ 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 推播通知，全程無需人工介入 |
 | `400` | 參數不合法（upload id 格式錯誤、分片序號超出範圍、總分片數不在 1~10） |
 | `413` | 超過大小限制（單分片超 1MB，或累計總大小超 1MB） |
 
 ### curl 範例
 
-存檔 ≤1MB 時單片即可傳完（最常用）：
+單次 POST（目前存檔一次即可傳完）：
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
@@ -336,7 +336,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- 啟動 FastAPI 服務：用戶端向 `POST /uploadMySekai` 分片上傳加密存檔（介面細節見「上傳介面」）；Reqable 也可把 HAR 工作階段上報到內建上報端點（見上文「Reqable 上報伺服器」章節）
+- 啟動 FastAPI 服務：用戶端向 `POST /uploadMySekai` 上傳加密存檔（單片或分片；介面細節見「上傳介面」）；Reqable 也可把 HAR 工作階段上報到內建上報端點（見上文「Reqable 上報伺服器」章節）
 - 全部片到達後自動完成：合併存檔 → 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 依玩家路由推播通知，無需人工介入
 - 預設監聽 `9478` 連接埠；公開網路部署時建議透過反向代理暴露為 HTTPS，用戶端腳本中寫死的上傳 URL（含連接埠）需與你的實際部署保持一致
 

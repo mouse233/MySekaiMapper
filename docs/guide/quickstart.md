@@ -54,7 +54,7 @@ Use when: you just want maps and stats in Telegram without setting up anything e
 
 3. Daily use: start the upload service; saves are turned into maps and pushed automatically. Two capture clients are supported:
 
-   - **MitM module**: chunk-uploads the save per the [Upload API](/guide/upload-api)
+   - **MitM module**: uploads the save per the [Upload API](/guide/upload-api)
    - **Reqable Report Server**: reports captured sessions to the built-in endpoint (see [Reqable Report Server](/guide/report-server))
 
    ```bash

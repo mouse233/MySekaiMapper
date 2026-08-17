@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: 全自动流水线
-    details: 抓包工具（MitM 模块 / Reqable 上报服务器）分片上传 MySekai 数据包，服务端自动合并、解密、绘图并推送，全程无需人工介入。
+    details: 抓包工具（MitM 模块 / Reqable 上报服务器）上传 MySekai 数据包，服务端自动解密、绘图并推送，全程无需人工介入。
   - title: 4 张地图 + 稀有资源统计
     details: 每次任务生成 site_5.png ~ site_8.png（初始空地、心愿沙滩、烂漫花田、忘却之所），外加 rare_resources.txt 稀有资源统计。
   - title: Telegram 优先，Bark 就绪
@@ -28,7 +28,7 @@ features:
 
 ```
 游戏 API 响应 → MitM 模块 / Reqable 上报服务器（抓包捕获 mysekai 数据）
-   │  ① 自动分片上传 → server.py 自动合并（推荐，项目初衷）
+   │  ① 自动上传（一次 POST，分片亦支持）→ server.py 自动处理
    │  ② 或手动放置 .bin 存档 → cli.py generate
    ▼
 parser.py    AES-128-CBC 解密 + msgpack 解析 + 坐标旋转

@@ -34,7 +34,7 @@ python cli.py notify <output_dir> [task_id]
 python cli.py server [--host 0.0.0.0] [--port 9478]
 ```
 
-- 启动 FastAPI 服务：客户端向 `POST /uploadMySekai` 分片上传加密存档（接口细节见[上传接口](/zh-CN/guide/upload-api)）；Reqable 也可把 HAR 会话上报到内置上报端点（见[Reqable 上报服务器](/zh-CN/guide/report-server)）
+- 启动 FastAPI 服务：客户端向 `POST /uploadMySekai` 上传加密存档（单片或分片；接口细节见[上传接口](/zh-CN/guide/upload-api)）；Reqable 也可把 HAR 会话上报到内置上报端点（见[Reqable 上报服务器](/zh-CN/guide/report-server)）
 - 全部片到达后自动完成：合并存档 → 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 按玩家路由推送通知，无需人工介入
 - 默认监听 `9478` 端口；公网部署时建议通过反向代理暴露为 HTTPS，客户端脚本中写死的上传 URL（含端口）需与你的实际部署保持一致
 

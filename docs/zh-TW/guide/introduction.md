@@ -2,7 +2,7 @@
 
 **MySekaiMapper** 是《世界計畫 繽紛舞台！feat. 初音未來》（Project Sekai）MySekai（我的世界）採集點地圖產生工具。
 
-**專案初衷**：搭配 MitM 模組或 Reqable 的「上報伺服器」功能使用——抓封包工具擷取遊戲內 MySekai 資料封包後，自動分片上傳到本服務；伺服器端合併加密存檔、解密並擷取各站點的資源掉落座標，繪製採集地圖，再把結果（含稀有資源統計）推播到玩家的 Telegram / Bark（iOS Day.app），全程無需人工介入。
+**專案初衷**：搭配 MitM 模組或 Reqable 的「上報伺服器」功能使用——抓封包工具擷取遊戲內 MySekai 資料封包後，自動上傳到本服務（一次 POST 即可，分片上傳亦受支援）；伺服器端解密加密存檔、擷取各站點的資源掉落座標，繪製採集地圖，再把結果（含稀有資源統計）推播到玩家的 Telegram / Bark（iOS Day.app），全程無需人工介入。
 
 一次任務會產生 **4 張地圖**：`site_5.png`（初始空地）、`site_6.png`（心願沙灘）、`site_7.png`（爛漫花田）、`site_8.png`（忘卻之所），外加一份 `rare_resources.txt` 稀有資源統計。
 
@@ -14,7 +14,7 @@
 
 ```
 遊戲 API 回應 → MitM 模組 / Reqable 上報伺服器（抓封包擷取 mysekai 資料）
-   │  ① 自動分片上傳 → server.py 自動合併（推薦，專案初衷）
+   │  ① 自動上傳（一次 POST，分片亦支援）→ server.py 自動處理
    │  ② 或手動放置 .bin 存檔 → cli.py generate
    ▼
 parser.py    AES-128-CBC 解密 + msgpack 解析 + 座標旋轉
