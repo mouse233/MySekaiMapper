@@ -1,3 +1,5 @@
+<!-- GENERATED from doc/README.zh-CN.md; do not edit directly. -->
+
 # 目录结构
 
 ```text
@@ -11,10 +13,16 @@
 │   └── service/             # 队列、存储与归档流水线
 ├── assets/                  # 字体和资源图标
 ├── config/                  # 本地路由模板
+│   ├── bark_map.example.json
+│   └── push_map.example.json
 ├── data/                    # 被忽略的运行时输出
+│   ├── tmp/                 # 上传暂存
+│   ├── raw_mysekai/         # 加密源存档
+│   ├── archive/             # 按玩家和时间戳保存的历史产物
+│   └── latest/              # 最新生成的产物
 ├── docs/                    # VitePress 文档
-├── go.mod / go.sum          # Go module 定义
+├── go.mod / go.sum          # Go 模块定义
 └── .env.example             # 配置模板
 ```
 
-`data/`、`.env` 与本地路由配置属于私密运行时数据，均不应提交到 Git。
+`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json` 是私密的运行时数据，会被 Git 忽略。

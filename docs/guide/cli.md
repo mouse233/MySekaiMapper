@@ -1,44 +1,49 @@
-# CLI Reference
+<!-- GENERATED from README.md; do not edit directly. -->
 
-Build the executable once:
+# Command-line reference
+
+Build the binary once:
 
 ```bash
 go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-All commands accept `--root /path/to/MySekaiMapper` when the executable runs outside the repository.
+All commands load `.env` by default and accept `--env /path/to/file`. `--root` may appear anywhere after the subcommand.
 
-## Inspect
-
-```bash
-bin/mysekaimapper inspect --input data/raw_mysekai/save.bin
-```
-
-Decrypts a save and prints an aggregate summary without writing maps.
-
-## Generate
+### `inspect`
 
 ```bash
-bin/mysekaimapper generate --input data/raw_mysekai/save.bin --output data/latest
+bin/mysekaimapper inspect --input mysekai.bin
 ```
 
-Creates `site_*.png` and `rare_resources.txt`. If `--output` is omitted, the default is `data/latest`.
+Decrypts and parses a save, then prints a safe aggregate JSON summary without writing maps.
 
-## Notify
+### `generate`
+
+```bash
+bin/mysekaimapper generate \
+  --input mysekai.bin \
+  --output data/latest
+```
+
+Decrypts the archive, extracts drops, and writes `site_*.png` plus `rare_resources.txt`. `--output` defaults to `data/latest`; `--assets` can override the asset directory.
+
+### `notify`
 
 ```bash
 bin/mysekaimapper notify \
   --output data/latest \
   --task-id manual-001 \
-  --player-id 1234567890123456789
+  --player-id 1234567890123456789 \
+  --image-base https://maps.example.com/latest
 ```
 
-`--player-id` selects the entry in `config/push_map.json`. `--image-base` can override the public URL base used for Bark image links.
+`--output` is required. `--task-id` and `--player-id` default to `unknown`; pass the actual player ID whenever player-specific routing is required.
 
-## Serve
+### `serve`
 
 ```bash
 bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 ```
 
-The service logs upload, queue, render, archive, notification, player ID, and elapsed-time events. Treat these logs as sensitive operational data.
+Starts the upload and report HTTP endpoints. Defaults are `0.0.0.0:9478`.

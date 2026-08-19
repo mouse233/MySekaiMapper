@@ -1,3 +1,5 @@
+<!-- GENERATED from doc/README.zh-CN.md; do not edit directly. -->
+
 # 命令行参考
 
 先构建一次可执行文件：
@@ -6,39 +8,42 @@
 go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-如果二进制在仓库外执行，所有命令均可传入 `--root /path/to/MySekaiMapper`。
+所有命令默认加载 `.env`，并接受 `--env /path/to/file`。`--root` 可放在子命令后的任意位置。
 
-## inspect
-
-```bash
-bin/mysekaimapper inspect --input data/raw_mysekai/save.bin
-```
-
-解密并打印汇总，不生成图片。
-
-## generate
+### `inspect`
 
 ```bash
-bin/mysekaimapper generate --input data/raw_mysekai/save.bin --output data/latest
+bin/mysekaimapper inspect --input mysekai.bin
 ```
 
-生成 `site_*.png` 与 `rare_resources.txt`；省略 `--output` 时默认写入 `data/latest`。
+解密并解析存档，输出安全的聚合 JSON 摘要，不写入地图。
 
-## notify
+### `generate`
+
+```bash
+bin/mysekaimapper generate \
+  --input mysekai.bin \
+  --output data/latest
+```
+
+解密存档、提取掉落点，并写入 `site_*.png` 和 `rare_resources.txt`。`--output` 默认使用 `data/latest`；`--assets` 可覆盖资源目录。
+
+### `notify`
 
 ```bash
 bin/mysekaimapper notify \
   --output data/latest \
   --task-id manual-001 \
-  --player-id 1234567890123456789
+  --player-id 1234567890123456789 \
+  --image-base https://maps.example.com/latest
 ```
 
-`--player-id` 用于匹配 `config/push_map.json` 的玩家路由；`--image-base` 可覆盖 Bark 图片公开地址。
+`--output` 必填。`--task-id` 和 `--player-id` 默认值为 `unknown`；需要玩家专属路由时，请传入实际玩家 ID。
 
-## serve
+### `serve`
 
 ```bash
 bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 ```
 
-服务日志记录上传、队列、渲染、归档、通知、玩家 ID 与耗时；请按敏感运维数据处理日志。
+启动上传和上报 HTTP 端点，默认监听 `0.0.0.0:9478`。

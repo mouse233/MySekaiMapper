@@ -1,17 +1,15 @@
+<!-- GENERATED from README.md; do not edit directly. -->
+
 # MySekaiMapper
 
-MySekaiMapper is a Go service that decrypts MySekai saves, renders resource-drop maps, archives the result, and sends it to Telegram or Bark.
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
 
-## Start here
+🌐 **Languages**: [English](./) · [简体中文](./zh-CN/) · [繁體中文](./zh-TW/) · [日本語](./ja-JP/) · [한국어](./ko-KR/)
 
-1. Install Go 1.25 or newer.
-2. Copy `.env.example` to `.env` and set `AES_KEY` and `AES_IV`.
-3. Build and run the service:
+A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram or Bark (Day.app).
 
-```bash
-mkdir -p bin
-go build -o bin/mysekaimapper ./cmd/mysekaimapper
-bin/mysekaimapper serve --host 0.0.0.0 --port 9478
-```
+It works with a MitM capture client or Reqable's **Report Server**: the capture tool uploads a MySekai save, the service decrypts and parses it, renders maps and a rare-resource summary, archives the artifacts, and dispatches notifications without a manual processing step.
 
-See the [Quick Start](./guide/quickstart), [CLI Reference](./guide/cli), and [Go Refactor](./guide/refactor-go).
+The usual MySekai areas produce `site_5.png` (Grassland), `site_6.png` (Beach), `site_7.png` (Flower Garden), `site_8.png` (Memorial Place), and `rare_resources.txt`. The renderer and notifier also handle any additional regular `site_*.png` outputs.
+
+The capture flow has been verified on the CN and TW servers operated by Nuverse. Availability on other regions depends on their API path and save format.
