@@ -81,7 +81,9 @@ for (const source of sources) {
   const prefix = source.locale ? `${source.locale}/` : ''
   await writeGenerated(join(destinationRoot, 'index.md'), rewriteLinks(preamble, 'index.md', source.locale), source.source)
   for (const [index, route] of routes.entries()) {
-    const page = sections[index].replace(/^## /, '# ')
+    const page = index === 0
+      ? `${preamble}\n\n${sections[index]}`
+      : sections[index].replace(/^## /, '# ')
     const destination = `${route}.md`
     await writeGenerated(join(destinationRoot, destination), rewriteLinks(page, destination, source.locale), source.source)
   }
