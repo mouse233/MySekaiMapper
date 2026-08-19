@@ -133,8 +133,8 @@ func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
 
 	joined := strings.Join(messages, "\n")
 	for _, expected := range []string{
-		"[UPLOAD] received task=logtask01 chunk=1/1 bytes=7",
-		"[UPLOAD] accepted task=logtask01 bytes=7",
+		"[UPLOAD] received task=logtask01 player_id=888 chunk=1/1 bytes=7",
+		"[UPLOAD] accepted task=logtask01 player_id=888 bytes=7",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("logs=%q, want %q", joined, expected)

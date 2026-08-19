@@ -57,12 +57,13 @@ func (p *GenerationProcessor) Process(ctx context.Context, rawPath, userID, task
 	}
 
 	started := time.Now()
-	p.logf("[JOB] start task=%s", taskID)
+	playerID := normalizeUserID(userID)
+	p.logf("[JOB] start task=%s player_id=%s", taskID, playerID)
 	drops, err := mapper.ReadDrops(rawPath)
 	if err != nil {
 		return err
 	}
-	p.logf("[PARSE] complete task=%s drops=%d", taskID, len(drops))
+	p.logf("[PARSE] complete task=%s player_id=%s drops=%d", taskID, playerID, len(drops))
 
 	outputDir, cleanup, err := p.Store.NewJobOutput(taskID)
 	if err != nil {
@@ -73,32 +74,32 @@ func (p *GenerationProcessor) Process(ctx context.Context, rawPath, userID, task
 	if err != nil {
 		return err
 	}
-	p.logf("[RENDER] complete task=%s maps=%d", taskID, len(result.MapFiles))
+	p.logf("[RENDER] complete task=%s player_id=%s maps=%d", taskID, playerID, len(result.MapFiles))
 
 	now := time.Now()
 	if p.Now != nil {
 		now = p.Now()
 	}
-	archiveDir, err := p.Store.Archive(outputDir, userID, now)
+	archiveDir, err := p.Store.Archive(outputDir, playerID, now)
 	if err != nil {
 		return err
 	}
 	if err := p.Store.PromoteLatest(archiveDir); err != nil {
 		return err
 	}
-	p.logf("[ARCHIVE] complete task=%s", taskID)
+	p.logf("[ARCHIVE] complete task=%s player_id=%s", taskID, playerID)
 
 	if p.Notifier != nil {
-		imageBase := archiveImageBase(p.BarkImageBase, normalizeUserID(userID), archiveDir)
-		if err := p.Notifier.Notify(ctx, archiveDir, taskID, normalizeUserID(userID), imageBase); err != nil {
-			p.logf("[NOTIFY] failed task=%s: %v", taskID, err)
+		imageBase := archiveImageBase(p.BarkImageBase, playerID, archiveDir)
+		if err := p.Notifier.Notify(ctx, archiveDir, taskID, playerID, imageBase); err != nil {
+			p.logf("[NOTIFY] failed task=%s player_id=%s: %v", taskID, playerID, err)
 		} else {
-			p.logf("[NOTIFY] dispatch complete task=%s", taskID)
+			p.logf("[NOTIFY] dispatch complete task=%s player_id=%s", taskID, playerID)
 		}
 	} else {
-		p.logf("[NOTIFY] skipped task=%s", taskID)
+		p.logf("[NOTIFY] skipped task=%s player_id=%s", taskID, playerID)
 	}
-	p.logf("[DONE] task=%s elapsed=%s", taskID, time.Since(started).Round(time.Millisecond))
+	p.logf("[DONE] task=%s player_id=%s elapsed=%s", taskID, playerID, time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -155,15 +156,16 @@ func (s *AsyncSubmitter) Submit(_ context.Context, data []byte, userID, taskID s
 	}
 	// Hold the queue lock through SaveRaw so Close cannot accept a file that
 	// would never be scheduled for processing.
-	path, err := s.Store.SaveRaw(data, userID, taskID)
+	playerID := normalizeUserID(userID)
+	path, err := s.Store.SaveRaw(data, playerID, taskID)
 	if err != nil {
 		return err
 	}
-	s.pending = append(s.pending, queuedJob{path: path, userID: userID, taskID: taskID})
+	s.pending = append(s.pending, queuedJob{path: path, userID: playerID, taskID: taskID})
 	pending := len(s.pending)
 	s.ready.Signal()
 	if s.Logf != nil {
-		s.Logf("[QUEUE] accepted task=%s bytes=%d pending=%d", taskID, len(data), pending)
+		s.Logf("[QUEUE] accepted task=%s player_id=%s bytes=%d pending=%d", taskID, playerID, len(data), pending)
 	}
 	return nil
 }

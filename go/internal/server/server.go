@@ -129,6 +129,7 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		http.Error(response, "Invalid chunk parameters", http.StatusBadRequest)
 		return
 	}
+	playerID := UserIDFromURL(request.Header.Get("X-Original-Url"))
 	body, err := readBody(request, h.config.MaxChunkSize)
 	if errors.Is(err, har.ErrBodyTooLarge) {
 		http.Error(response, "Chunk too large", http.StatusRequestEntityTooLarge)
@@ -138,7 +139,7 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		http.Error(response, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	h.logf("[UPLOAD] received task=%s chunk=%d/%d bytes=%d", uploadID, index+1, total, len(body))
+	h.logf("[UPLOAD] received task=%s player_id=%s chunk=%d/%d bytes=%d", uploadID, playerID, index+1, total, len(body))
 	// Serialize the short merge/submit handoff so simultaneous retries for the
 	// same upload ID cannot launch duplicate background jobs before marking it.
 	h.uploadMu.Lock()
@@ -156,13 +157,13 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	if complete {
-		if err := h.submitter.Submit(request.Context(), merged, UserIDFromURL(request.Header.Get("X-Original-Url")), uploadID); err != nil {
+		if err := h.submitter.Submit(request.Context(), merged, playerID, uploadID); err != nil {
 			// Keep chunks on disk so a retry of the last chunk can submit the
 			// same merged archive after a transient storage failure.
 			writeSubmitError(response, err)
 			return
 		}
-		h.logf("[UPLOAD] accepted task=%s bytes=%d", uploadID, len(merged))
+		h.logf("[UPLOAD] accepted task=%s player_id=%s bytes=%d", uploadID, playerID, len(merged))
 		if err := h.chunks.MarkSubmitted(uploadID); err != nil {
 			http.Error(response, "Unable to finalize completed upload", http.StatusInternalServerError)
 			return
@@ -230,11 +231,12 @@ func (h *Handler) reqableReport(response http.ResponseWriter, request *http.Requ
 				http.Error(response, "Unable to create task", http.StatusInternalServerError)
 				return
 			}
-			if err := h.submitter.Submit(request.Context(), candidate, UserIDFromURL(har.RequestURL(entry)), taskID); err != nil {
+			playerID := UserIDFromURL(har.RequestURL(entry))
+			if err := h.submitter.Submit(request.Context(), candidate, playerID, taskID); err != nil {
 				writeSubmitError(response, err)
 				return
 			}
-			h.logf("[REPORT] accepted task=%s bytes=%d", taskID, len(candidate))
+			h.logf("[REPORT] accepted task=%s player_id=%s bytes=%d", taskID, playerID, len(candidate))
 			writePlain(response, http.StatusOK, "ok")
 			return
 		}
