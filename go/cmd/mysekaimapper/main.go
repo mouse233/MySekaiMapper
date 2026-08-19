@@ -174,6 +174,7 @@ func runServe(root string, args []string) {
 	if err != nil {
 		fatal(err)
 	}
+	handler.Logf = log.Printf
 
 	address := net.JoinHostPort(*host, fmt.Sprintf("%d", *port))
 	server := &http.Server{

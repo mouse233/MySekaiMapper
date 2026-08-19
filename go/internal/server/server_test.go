@@ -9,11 +9,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 
@@ -107,6 +109,39 @@ func TestChunkUploadMergesAndSubmits(t *testing.T) {
 	items := submitter.snapshot()
 	if len(items) != 1 || string(items[0].data) != "part-0part-1part-2" || items[0].userID != "888" || items[0].taskID != "regression01" {
 		t.Fatalf("submissions=%#v", items)
+	}
+}
+
+func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
+	submitter := &recordingSubmitter{}
+	handler := newTestHandler(t, baseConfig(), submitter)
+	var messages []string
+	handler.Logf = func(format string, args ...any) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewBufferString("archive"))
+	request.Header.Set("X-Upload-Id", "logtask01")
+	request.Header.Set("X-Chunk-Index", "0")
+	request.Header.Set("X-Total-Chunks", "1")
+	request.Header.Set("X-Original-Url", "https://example.test/user/888/mysekai")
+	response := httptest.NewRecorder()
+	handler.Routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+
+	joined := strings.Join(messages, "\n")
+	for _, expected := range []string{
+		"[UPLOAD] received task=logtask01 chunk=1/1 bytes=7",
+		"[UPLOAD] accepted task=logtask01 bytes=7",
+	} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("logs=%q, want %q", joined, expected)
+		}
+	}
+	if strings.Contains(joined, "https://") || strings.Contains(joined, "/user/888") {
+		t.Fatalf("logs leaked the original URL: %q", joined)
 	}
 }
 

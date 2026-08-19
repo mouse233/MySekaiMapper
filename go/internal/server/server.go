@@ -69,6 +69,10 @@ type Handler struct {
 	submitter Submitter
 	newTaskID func() (string, error)
 	uploadMu  sync.Mutex
+
+	// Logf receives operational messages without archive bodies, URLs, or tokens.
+	// It is optional so library users and tests can stay silent.
+	Logf func(format string, args ...any)
 }
 
 func New(config Config, chunks chunkAdder, submitter Submitter) (*Handler, error) {
@@ -134,6 +138,7 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		http.Error(response, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	h.logf("[UPLOAD] received task=%s chunk=%d/%d bytes=%d", uploadID, index+1, total, len(body))
 	// Serialize the short merge/submit handoff so simultaneous retries for the
 	// same upload ID cannot launch duplicate background jobs before marking it.
 	h.uploadMu.Lock()
@@ -157,6 +162,7 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 			writeSubmitError(response, err)
 			return
 		}
+		h.logf("[UPLOAD] accepted task=%s bytes=%d", uploadID, len(merged))
 		if err := h.chunks.MarkSubmitted(uploadID); err != nil {
 			http.Error(response, "Unable to finalize completed upload", http.StatusInternalServerError)
 			return
@@ -191,6 +197,7 @@ func (h *Handler) reqableReport(response http.ResponseWriter, request *http.Requ
 		http.Error(response, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	h.logf("[REPORT] received bytes=%d", len(raw))
 	document, err := har.Parse(raw, request.Header.Get("Content-Encoding"), h.config.ReportMaxSize)
 	if errors.Is(err, har.ErrBodyTooLarge) {
 		http.Error(response, "Report body too large", http.StatusRequestEntityTooLarge)
@@ -227,13 +234,21 @@ func (h *Handler) reqableReport(response http.ResponseWriter, request *http.Requ
 				writeSubmitError(response, err)
 				return
 			}
+			h.logf("[REPORT] accepted task=%s bytes=%d", taskID, len(candidate))
 			writePlain(response, http.StatusOK, "ok")
 			return
 		}
 	}
 	// A report may contain unrelated API sessions. Reqable does not retry, so a
 	// syntactically valid report with no archive is still acknowledged.
+	h.logf("[REPORT] no MySekai archive found")
 	writePlain(response, http.StatusOK, "ok")
+}
+
+func (h *Handler) logf(format string, args ...any) {
+	if h.Logf != nil {
+		h.Logf(format, args...)
+	}
 }
 
 // UserIDFromURL follows the same /user/<digits> extraction rule as Python.

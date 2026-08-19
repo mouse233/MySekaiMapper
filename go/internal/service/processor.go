@@ -55,18 +55,25 @@ func (p *GenerationProcessor) Process(ctx context.Context, rawPath, userID, task
 	if !validTaskID.MatchString(taskID) {
 		return fmt.Errorf("invalid task id")
 	}
+
+	started := time.Now()
+	p.logf("[JOB] start task=%s", taskID)
 	drops, err := mapper.ReadDrops(rawPath)
 	if err != nil {
 		return err
 	}
+	p.logf("[PARSE] complete task=%s drops=%d", taskID, len(drops))
+
 	outputDir, cleanup, err := p.Store.NewJobOutput(taskID)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	if _, err := mapper.Generate(drops, p.ResourceCSV, p.FontFile, outputDir); err != nil {
+	result, err := mapper.Generate(drops, p.ResourceCSV, p.FontFile, outputDir)
+	if err != nil {
 		return err
 	}
+	p.logf("[RENDER] complete task=%s maps=%d", taskID, len(result.MapFiles))
 
 	now := time.Now()
 	if p.Now != nil {
@@ -79,13 +86,19 @@ func (p *GenerationProcessor) Process(ctx context.Context, rawPath, userID, task
 	if err := p.Store.PromoteLatest(archiveDir); err != nil {
 		return err
 	}
+	p.logf("[ARCHIVE] complete task=%s", taskID)
 
 	if p.Notifier != nil {
 		imageBase := archiveImageBase(p.BarkImageBase, normalizeUserID(userID), archiveDir)
 		if err := p.Notifier.Notify(ctx, archiveDir, taskID, normalizeUserID(userID), imageBase); err != nil {
-			p.logf("notification failed for task %s: %v", taskID, err)
+			p.logf("[NOTIFY] failed task=%s: %v", taskID, err)
+		} else {
+			p.logf("[NOTIFY] dispatch complete task=%s", taskID)
 		}
+	} else {
+		p.logf("[NOTIFY] skipped task=%s", taskID)
 	}
+	p.logf("[DONE] task=%s elapsed=%s", taskID, time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -147,7 +160,11 @@ func (s *AsyncSubmitter) Submit(_ context.Context, data []byte, userID, taskID s
 		return err
 	}
 	s.pending = append(s.pending, queuedJob{path: path, userID: userID, taskID: taskID})
+	pending := len(s.pending)
 	s.ready.Signal()
+	if s.Logf != nil {
+		s.Logf("[QUEUE] accepted task=%s bytes=%d pending=%d", taskID, len(data), pending)
+	}
 	return nil
 }
 
@@ -204,10 +221,10 @@ func (s *AsyncSubmitter) nextJob() (queuedJob, bool) {
 func (s *AsyncSubmitter) processJob(job queuedJob) {
 	defer func() {
 		if recovered := recover(); recovered != nil && s.Logf != nil {
-			s.Logf("background processing panicked for task %s", job.taskID)
+			s.Logf("[ERROR] processing panicked task=%s", job.taskID)
 		}
 	}()
 	if err := s.Processor.Process(context.Background(), job.path, job.userID, job.taskID); err != nil && s.Logf != nil {
-		s.Logf("background processing failed for task %s: %v", job.taskID, err)
+		s.Logf("[ERROR] processing failed task=%s: %v", job.taskID, err)
 	}
 }
