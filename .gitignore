@@ -10,22 +10,14 @@ config/push_map.json
 # ---- 运行时数据(分片暂存 / 原始存档 / 归档 / 最新成品) ----
 data/
 
-# ---- Python ----
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-venv/
-.venv/
-.venv-ci/
-
 # ---- VitePress 文档站 ----
 node_modules/
 .npm-cache/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 
-# ---- Go 原型构建缓存 ----
+# ---- Go 构建产物与缓存 ----
+bin/
 .go-cache/
 
 # ---- 系统 / 编辑器 ----
