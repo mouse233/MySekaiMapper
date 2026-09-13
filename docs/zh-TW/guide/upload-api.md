@@ -1,68 +1,52 @@
-# 上傳介面
+<!-- GENERATED from doc/README.zh-TW.md; do not edit directly. -->
 
-用戶端把擷取的 mysekai 回應主體透過 `POST /uploadMySekai` 上傳（一次 POST 即可；分片上傳僅作相容保留）。手動用 curl 依同一協定除錯亦可。header 如下：
+# 上傳 API
 
-| Header | 說明 |
-| --- | --- |
-| `X-Upload-Id` | 上傳任務 ID（僅字母數字與 `-` / `_`，長度 1~64），必填 |
-| `X-Chunk-Index` | 分片序號，從 0 開始（單片上傳恆為 0），必填 |
-| `X-Total-Chunks` | 總分片數（1~10；單片上傳填 1），必填 |
-| `X-Original-Url` | 用戶端原始頁面 URL，用於解析玩家 ID（如 `https://.../user/123456...`）；**選填**，缺失時玩家 ID 記為 `unknown` |
-| `X-Script-Version` | 用戶端腳本版本號；伺服器端忽略該 header，可不傳 |
+`POST /uploadMySekai` 可直接接受已加密的 MySekai 回應主體。通常單次上傳即可；為相容擷取用戶端，仍支援依序傳送的分塊。
 
-請求主體為原始二進位存檔資料（無需 multipart）。
+| 標頭 | 必要性 | 說明 |
+| --- | --- | --- |
+| `X-Upload-Id` | 是 | 符合 `^[A-Za-z0-9_-]{1,64}$` 的工作識別碼 |
+| `X-Chunk-Index` | 是 | 從零開始的分塊索引 |
+| `X-Total-Chunks` | 是 | 分塊總數，範圍從 1 到 10 |
+| `X-Original-Url` | 否 | 原始遊戲 URL；`/user/<id>` 可提供玩家路由資訊 |
+| `X-Script-Version` | 否 | 為相容擷取用戶端而接受，服務會忽略此值 |
 
-## 限制
+加密封存檔、每個分塊與合併後的上傳皆限制為 1 MiB。成功接受的請求會回傳純文字 `OK`；渲染與通知則在背景繼續執行。
 
-- 單一檔案總大小 ≤1MB（`MAX_TOTAL_SIZE`）
-- 單一分片 ≤1MB（`MAX_CHUNK_SIZE`，超出限制回傳 413）
-- 總分片數 ≤10（`MAX_CHUNKS`）
-
-::: tip
-目前存檔約 200KB，**一次 POST 即可傳完**。分片上傳僅為相容舊抓封包用戶端保留；若使用分片，每片應明顯小於 1MB（例如 256KB），10 片可傳滿 1MB 上限。
-:::
-
-## 回應
-
-| 狀態碼 | 含義 |
-| --- | --- |
-| `200` | 存檔已接收，回傳 `OK`；伺服器端自動完成：合併存檔（如分片）→ 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 推播通知，全程無需人工介入 |
-| `400` | 參數不合法（upload id 格式錯誤、分片序號超出範圍、總分片數不在 1~10） |
-| `413` | 超過大小限制（單分片超 1MB，或累計總大小超 1MB） |
-
-## curl 範例
-
-單次 POST（目前存檔一次即可傳完）：
+### 單次上傳範例
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
-  -H "X-Upload-Id: demo12345" \
-  -H "X-Chunk-Index: 0" \
-  -H "X-Total-Chunks: 1" \
-  -H "X-Original-Url: https://example.com/user/1234567890123456789" \
+  -H 'X-Upload-Id: demo12345' \
+  -H 'X-Chunk-Index: 0' \
+  -H 'X-Total-Chunks: 1' \
+  -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
   --data-binary @mysekai.bin
 ```
 
-分片上傳（選用，相容舊用戶端；每片 256KB，10 片傳滿 1MB 上限）：
+### 分塊上傳範例
+
+請使用相同的 `X-Upload-Id`、依序的索引，且最多十個分塊：
 
 ```bash
 file=mysekai.bin
 id=$(openssl rand -hex 5)
-total=$(( ($(wc -c < "$file") + 262143) / 262144 ))
 split -b 262144 -a 2 -d "$file" /tmp/ms_chunk_
+total=$(ls /tmp/ms_chunk_* | wc -l | tr -d ' ')
 
 i=0
-for c in /tmp/ms_chunk_*; do
+for chunk in /tmp/ms_chunk_*; do
   curl -s -X POST http://127.0.0.1:9478/uploadMySekai \
     -H "X-Upload-Id: $id" \
     -H "X-Chunk-Index: $i" \
     -H "X-Total-Chunks: $total" \
-    -H "X-Original-Url: https://example.com/user/1234567890123456789" \
-    --data-binary @"$c"
+    -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
+    --data-binary @"$chunk"
   echo
   i=$((i + 1))
 done
 rm -f /tmp/ms_chunk_*
 ```
 
-回傳 `200 OK` 即表示存檔已接收；流水線（如分片則先合併 → 產生地圖 → 歸檔 → 推播）自動完成。把 `127.0.0.1:9478` 替換為你的實際服務位址；`X-Upload-Id` 必須符合 `^[a-zA-Z0-9_-]{1,64}$`（例如用 `openssl rand -hex 5` 產生的隨機字串）。
+常見回應包括：已接受上傳時的 `200 OK`、識別碼或分塊範圍無效時的 `400 Bad Request`、超過大小限制時的 `413 Payload Too Large`，以及缺少必要上傳標頭或其值非整數時的 `422 Unprocessable Entity`。

@@ -1,43 +1,15 @@
----
-layout: home
+<!-- GENERATED from doc/README.ja-JP.md; do not edit directly. -->
 
-hero:
-  name: MySekaiMapper
-  text: MySekai 採集ポイントマップ生成ツール
-  tagline: 「プロジェクトセカイ カラフルステージ！」（Project Sekai）MySekai 採集ポイントマップ生成・自動プッシュツール。
-  actions:
-    - theme: brand
-      text: はじめる
-      link: /ja-JP/guide/introduction
-    - theme: alt
-      text: GitHub で見る
-      link: https://github.com/mouse233/MySekaiMapper
+# MySekaiMapper
 
-features:
-  - title: 全自動パイプライン
-    details: キャプチャツール（MitM モジュール / Reqable レポートサーバー）が mysekai データパケットをアップロードし、サーバー側が自動で復号・描画・プッシュまで実行。一切の手動介入は不要です。
-  - title: 4 枚のマップ + レア資源統計
-    details: 1 回のタスクで site_5.png ~ site_8.png（さいしょの原っぱ、願いの砂浜、彩りの花畑、忘れ去られた場所）を生成し、さらに rare_resources.txt のレア資源統計も出力します。
-  - title: Telegram 優先、Bark 対応
-    details: Telegram は 4 枚の PNG を multipart で直接送信し、公開直リンクは不要。静的ファイルサーバーを設定すれば Bark にも画像直リンク通知が届きます。
-  - title: AES-128-CBC 復号
-    details: 暗号化された MySekai セーブデータを復号し、msgpack を解析してサイト座標を自動回転、matplotlib で採集マップを描画します。
----
+🌐 **Languages**: [English](../) · [简体中文](../zh-CN/) · [繁體中文](../zh-TW/) · [日本語](../ja-JP/) · [한국어](../ko-KR/)
 
-## ワークフロー
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/ja-JP/>
 
-```
-ゲーム API 応答 → MitM モジュール / Reqable レポートサーバー（mysekai データをキャプチャ）
-   │  ① 自動アップロード（1 回の POST、分割にも対応）→ server.py が自動処理
-   │  ② または .bin セーブデータを手動配置 → cli.py generate
-   ▼
-parser.py    AES-128-CBC 復号 + msgpack 解析 + 座標回転
-   ▼
-render.py    site_5.png ~ site_8.png + rare_resources.txt を描画 → data/latest/
-   ▼
-notify.py    プッシュ：
-             ├─ Telegram  ：画像を multipart で直接送信、公開直リンク不要 ← デフォルトチャネル
-             └─ Bark      ：image= URL 直リンクで通知、静的ファイルサーバーが必要
-```
+暗号化された *Project SEKAI* の MySekai セーブデータを資源収集マップへ変換し、結果を Telegram または Bark（Day.app）へ送信する Go サービスです。
 
-> ⚠️ **免責事項**：本ツールは個人の学習と娯楽のみを目的としています。商業用途やゲームの利用規約に違反する行為には使用しないでください。ゲームデータおよびアートリソースの著作権は元の権利者に帰属します。
+MitM キャプチャクライアントまたは Reqable の **Report Server** と連携します。キャプチャツールが MySekai セーブデータをアップロードすると、サービスが復号・解析してマップとレアリソース概要を描画し、成果物をアーカイブして、手動処理なしで通知を配信します。
+
+通常の MySekai エリアでは `site_5.png`（草原）、`site_6.png`（浜辺）、`site_7.png`（花畑）、`site_8.png`（記念所）、および `rare_resources.txt` が生成されます。レンダラーと通知機能は、追加の通常 `site_*.png` 出力にも対応しています。
+
+キャプチャフローは Nuverse が運営する中国（CN）および台湾（TW）サーバーで検証されています。他リージョンで利用できるかどうかは、その API パスとセーブデータ形式に依存します。

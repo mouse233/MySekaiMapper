@@ -1,39 +1,31 @@
-# Introduction
+<!-- GENERATED from README.md; do not edit directly. -->
 
-**MySekaiMapper** is a resource-gathering point map generator for the MySekai mode in *Project Sekai* (世界计划 多彩舞台).
+# MySekaiMapper
 
-**Original intent**: designed to work with MitM modules or Reqable's "Report Server" feature — the capture tool grabs MySekai data packets from the game and automatically uploads them to this service (single POST; chunked upload is also supported). The server decrypts the encrypted saves, extracts the resource drop coordinates of every station, draws gathering maps, and pushes the results (including a rare-resource summary) to the player's Telegram / Bark (iOS Day.app) — no manual intervention required.
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
 
-Each task produces **4 maps**: `site_5.png` (Grassland), `site_6.png` (Beach), `site_7.png` (Flower Garden), `site_8.png` (Memorial Place), plus a `rare_resources.txt` rare-resource summary.
+🌐 **Languages**: [English](../) · [简体中文](../zh-CN/) · [繁體中文](../zh-TW/) · [日本語](../ja-JP/) · [한국어](../ko-KR/)
 
-::: info Supported servers
-This project has been tested and verified on the CN and TW servers operated by Nuverse (朝夕光年). Availability on other servers is unknown.
-:::
+A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram or Bark (Day.app).
+
+It works with a MitM capture client or Reqable's **Report Server**: the capture tool uploads a MySekai save, the service decrypts and parses it, renders maps and a rare-resource summary, archives the artifacts, and dispatches notifications without a manual processing step.
+
+The usual MySekai areas produce `site_5.png` (Grassland), `site_6.png` (Beach), `site_7.png` (Flower Garden), `site_8.png` (Memorial Place), and `rare_resources.txt`. The renderer and notifier also handle any additional regular `site_*.png` outputs.
+
+The capture flow has been verified on the CN and TW servers operated by Nuverse. Availability on other regions depends on their API path and save format.
 
 ## How it works
 
+```text
+Game API response → MitM module / Reqable Report Server
+    │  ① POST /uploadMySekai (single upload or ordered chunks)
+    │  ② POST /reqable/report (HAR, optionally gzip / br / zstd)
+    ▼
+mysekaimapper serve
+    ├─ AES-128-CBC decrypt + MsgPack parse + coordinate normalization
+    ├─ render site_*.png + rare_resources.txt
+    ├─ archive data/archive/by-id/<player_id>/<timestamp>/
+    └─ publish data/latest/ and notify
+         ├─ Telegram: upload local images as multipart media groups
+         └─ Bark: send image URLs from a public static-file server
 ```
-Game API response → MitM module / Reqable Report Server (captures mysekai data)
-   │  ① Auto upload (single POST; chunked supported) → server.py processes automatically
-   │  ② Or drop a .bin save manually → cli.py generate
-   ▼
-parser.py    AES-128-CBC decrypt + msgpack parse + coordinate rotation
-   ▼
-render.py    Draw site_5.png ~ site_8.png + rare_resources.txt → data/latest/
-   ▼
-notify.py    Push:
-             ├─ Telegram: images uploaded directly as multipart, no public URL needed ← default channel
-             └─ Bark: notified with image= URL links, requires a static file server
-```
-
-## Requirements
-
-- Python 3.10+
-- Dependencies pinned in `requirements.txt`
-
-## Quick links
-
-- [Quick Start](/guide/quickstart) — install, configure `.env`, pick Path A or Path B
-- [Upload API](/guide/upload-api) — the chunked upload endpoint for capture clients
-- [Push Mechanism](/guide/push) — how Telegram / Bark notifications work
-- [CLI Reference](/guide/cli) — `cli.py generate` / `notify` / `server`

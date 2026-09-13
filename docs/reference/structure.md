@@ -1,34 +1,28 @@
-# Directory Structure
+<!-- GENERATED from README.md; do not edit directly. -->
 
-```
-├── app/                       # core package
-│   ├── config.py              # centralized paths / env vars / local config
-│   ├── crypto.py              # MySekai save AES-128-CBC decryption
-│   ├── parser.py              # msgpack parsing + station coordinate rotation (pure functions)
-│   ├── har.py                 # HAR parsing + decompression for the Reqable report server (pure functions)
-│   ├── render.py              # extract drop points → matplotlib drawing + rare-resource stats
-│   ├── notify.py              # push: Telegram media groups / Bark, per-player routing
-│   ├── server.py              # FastAPI upload service (chunked upload + Reqable report server)
-│   └── cli.py                 # CLI entry
-├── assets/                    # static assets (committed to the repo)
-│   ├── resourceId.csv         # item ID → name + icon (base64)
-│   └── NotoSansSC-Regular.ttf # Chinese font (OFL license)
-├── config/                    # local configs (real files not committed; see *.example.json)
-│   ├── bark_map.example.json  # Bark alias → device key template
-│   └── push_map.example.json  # player ID → push method template
-├── data/                      # runtime data (whole directory gitignored)
-│   ├── tmp/                   # chunk upload staging, cleaned after merge
-│   ├── raw_mysekai/           # merged original (encrypted) saves, kept permanently
-│   ├── archive/               # historical output archive by-id/<user>/<timestamp>/ (Bark links point here)
-│   └── latest/                # most recent output
-├── cli.py                     # unified entry
-├── tests/                     # unit tests (pytest)
-├── .env.example               # env var template (copy to .env and fill in)
-└── requirements.txt           # runtime dependencies (pinned)
+# Directory structure
+
+```text
+.
+├── cmd/mysekaimapper/       # CLI entry point
+├── internal/
+│   ├── har/                 # Reqable HAR parsing and decompression
+│   ├── mapper/              # AES, MsgPack, resources, and rendering
+│   ├── notify/              # Telegram and Bark delivery
+│   ├── server/              # Upload and report HTTP endpoints
+│   └── service/             # Queue, storage, and archive pipeline
+├── assets/                  # Font and resource icons
+├── config/                  # Local routing templates
+│   ├── bark_map.example.json
+│   └── push_map.example.json
+├── data/                    # Ignored runtime data
+│   ├── tmp/                 # Upload staging
+│   ├── raw_mysekai/         # Encrypted source archives
+│   ├── archive/             # Historical artifacts by player and timestamp
+│   └── latest/              # Latest generated artifacts
+├── docs/                    # VitePress documentation
+├── go.mod / go.sum          # Go module definition
+└── .env.example             # Configuration template
 ```
 
-## Testing
-
-```bash
-python -m pytest
-```
+`data/`, `.env`, `config/bark_map.json`, and `config/push_map.json` are private runtime data and are ignored by Git.

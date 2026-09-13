@@ -1,39 +1,31 @@
-# プロジェクト紹介
+<!-- GENERATED from doc/README.ja-JP.md; do not edit directly. -->
 
-**MySekaiMapper** は「プロジェクトセカイ カラフルステージ！feat. 初音ミク」（Project Sekai）の MySekai（マイセカイ）採集ポイントマップ生成ツールです。
+# MySekaiMapper
 
-**開発のきっかけ**：MitM モジュールまたは Reqable の「レポートサーバー」機能と組み合わせて使用します——キャプチャツールがゲーム内の MySekai データパケットを捕捉した後、自動的に本サービスへアップロードします（1 回の POST で送信可能、分割アップロードにも対応）。サーバー側は暗号化セーブデータを復号し、各ステーションの資源ドロップ座標を抽出して採集マップを描画し、その結果（レア資源統計を含む）をプレイヤーの Telegram / Bark（iOS Day.app）へプッシュします。一切の手動介入は不要です。
+🌐 **Languages**: [English](../../) · [简体中文](../../zh-CN/) · [繁體中文](../../zh-TW/) · [日本語](../../ja-JP/) · [한국어](../../ko-KR/)
 
-1 回のタスクで **4 枚のマップ**が生成されます：`site_5.png`（さいしょの原っぱ）、`site_6.png`（願いの砂浜）、`site_7.png`（彩りの花畑）、`site_8.png`（忘れ去られた場所）。さらに `rare_resources.txt` のレア資源統計も出力します。
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/ja-JP/>
 
-::: info サーバー互換性
-本プロジェクトは朝夕光年（Nuverse）が運営する CN サーバー / TW サーバーで動作確認済みです。他のサーバーでの動作は未確認です。
-:::
+暗号化された *Project SEKAI* の MySekai セーブデータを資源収集マップへ変換し、結果を Telegram または Bark（Day.app）へ送信する Go サービスです。
 
-## ワークフロー
+MitM キャプチャクライアントまたは Reqable の **Report Server** と連携します。キャプチャツールが MySekai セーブデータをアップロードすると、サービスが復号・解析してマップとレアリソース概要を描画し、成果物をアーカイブして、手動処理なしで通知を配信します。
 
+通常の MySekai エリアでは `site_5.png`（草原）、`site_6.png`（浜辺）、`site_7.png`（花畑）、`site_8.png`（記念所）、および `rare_resources.txt` が生成されます。レンダラーと通知機能は、追加の通常 `site_*.png` 出力にも対応しています。
+
+キャプチャフローは Nuverse が運営する中国（CN）および台湾（TW）サーバーで検証されています。他リージョンで利用できるかどうかは、その API パスとセーブデータ形式に依存します。
+
+## 仕組み
+
+```text
+Game API response → MitM module / Reqable Report Server
+    │  ① POST /uploadMySekai (single upload or ordered chunks)
+    │  ② POST /reqable/report (HAR, optionally gzip / br / zstd)
+    ▼
+mysekaimapper serve
+    ├─ AES-128-CBC decrypt + MsgPack parse + coordinate normalization
+    ├─ render site_*.png + rare_resources.txt
+    ├─ archive data/archive/by-id/<player_id>/<timestamp>/
+    └─ publish data/latest/ and notify
+         ├─ Telegram: upload local images as multipart media groups
+         └─ Bark: send image URLs from a public static-file server
 ```
-ゲーム API 応答 → MitM モジュール / Reqable レポートサーバー（mysekai データをキャプチャ）
-   │  ① 自動アップロード（1 回の POST、分割にも対応）→ server.py が自動処理
-   │  ② または .bin セーブデータを手動配置 → cli.py generate
-   ▼
-parser.py    AES-128-CBC 復号 + msgpack 解析 + 座標回転
-   ▼
-render.py    site_5.png ~ site_8.png + rare_resources.txt を描画 → data/latest/
-   ▼
-notify.py    プッシュ：
-             ├─ Telegram  ：画像を multipart で直接送信、公開直リンク不要 ← デフォルトチャネル
-             └─ Bark      ：image= URL 直リンクで通知、静的ファイルサーバーが必要
-```
-
-## 環境要件
-
-- Python 3.10+
-- 実行時依存は `requirements.txt` を基準とします（バージョン固定）
-
-## クイックナビゲーション
-
-- [クイックスタート](/ja-JP/guide/quickstart) — インストール、`.env` の設定、パス A / パス B の選択
-- [アップロードAPI](/ja-JP/guide/upload-api) — キャプチャクライアント向けの分割アップロードインターフェース
-- [プッシュの仕組み](/ja-JP/guide/push) — Telegram / Bark 通知の仕組み
-- [コマンドラインツール](/ja-JP/guide/cli) — `cli.py generate` / `notify` / `server`

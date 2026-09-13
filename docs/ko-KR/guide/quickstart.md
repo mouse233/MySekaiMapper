@@ -1,84 +1,84 @@
+<!-- GENERATED from doc/README.ko-KR.md; do not edit directly. -->
+
 # 빠른 시작
 
-먼저 설치와 `.env` 기본 설정을 마친 뒤, 원하는 푸시 방식에 따라 경로를 선택하십시오:
+구성에 맞는 알림 경로를 선택하세요.
 
-- **경로 A(Telegram Bot 푸시만 사용)**: 설정이 가장 적으므로 먼저 이 경로를 통과시키는 것을 권장합니다.
-- **경로 B(Bark 푸시 활성화)**: 경로 A를 기반으로 Bark key, 플레이어 라우팅, 정적 파일 서버를 추가로 설정해야 합니다.
+- **경로 A — Telegram만 사용**: 가장 간단한 선택지입니다. 플레이어 라우팅 파일이나 공개 이미지 서버가 필요하지 않습니다.
+- **경로 B — Bark 사용**: Bark 키, 플레이어 라우팅 및 이미지용 공개 정적 파일 서버를 구성합니다.
 
-## 1. 설치
+### 1. 요구 사항 및 빌드
 
-```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# 선택 사항: mysekai 명령 설치 (python cli.py ... 와 동일)
-venv/bin/pip install -e .
-```
-
-## 2. .env 설정(필수 항목)
+Go **1.25 이상**이 필요합니다.
 
 ```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV`는 MySekai 저장 파일의 AES-128-CBC 복호화 키(각 16바이트)로, 어떤 경로를 선택하든 반드시 입력해야 합니다. 나머지 변수는 선택한 경로에 따라 설정합니다:
+`.env`의 `AES_KEY`와 `AES_IV`는 16바이트 AES-128-CBC 값으로 반드시 설정해야 합니다. `.env` 또는 로컬 라우팅 파일을 커밋하지 마세요.
 
-| 변수 | 필수 | 설명 |
+### 2. `.env` 구성
+
+| 변수 | 필수 여부 | 설명 |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | MySekai 저장 파일의 AES-128-CBC 키, 각 16바이트 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 선택* | Telegram 푸시(기본 채널)에 필요, [@BotFather](https://t.me/BotFather)에서 발급 |
-| `BARK_ICON` | 선택 | Bark 알림 아이콘 URL |
-| `BARK_IMAGE_BASE` | 선택 | 정적 파일 서버 루트 주소(Bark 이미지 직링크 푸시용, 아래 참조) |
-| `FALLBACK_IMAGE_BASE` | 선택 | `BARK_IMAGE_BASE` 미설정 시 사용할 이미지 직링크 대체 주소 |
+| `AES_KEY`, `AES_IV` | 예 | 16바이트 MySekai AES-128-CBC 키 및 IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram 전용 | [@BotFather](https://t.me/BotFather)에서 받은 봇 자격 증명 및 대상 채팅 ID |
+| `BARK_ICON` | 선택 사항 | Bark 알림에 포함할 아이콘 URL |
+| `BARK_IMAGE_BASE` | Bark 이미지 사용 시 | 보관된 지도 이미지의 공개 기본 URL |
+| `FALLBACK_IMAGE_BASE` | 선택 사항 | `BARK_IMAGE_BASE`가 설정되지 않았을 때 사용할 이미지 기본 URL |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 선택 사항 | Reqable 보고서 엔드포인트 설정 |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 선택 사항 | 기본 저장소 디렉터리 재정의 |
 
-::: warning
-\* Bark로만 알림을 받고 싶다면: Telegram 설정을 비워 둘 수 있지만, **`config/push_map.json`에서 플레이어를 Bark 별칭으로 라우팅해야 합니다**. 그렇지 않으면 미설정 플레이어는 기본적으로 Telegram으로 푸시되는데, Telegram 설정이 없으면 경고 한 줄만 출력하고 건너뛰므로 결국 아무것도 푸시되지 않습니다.
-:::
+### 3. 경로 A — Telegram만 사용
 
-## 3. 경로 A: Telegram Bot 푸시만 사용(가장 간단)
+1. `.env`에 Telegram 변수를 설정합니다.
 
-적용 시나리오: Telegram에서 지도와 통계만 받으면 되고, 다른 구성 요소는 건드리고 싶지 않은 경우.
+    ```dotenv
+    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
+    TELEGRAM_CHAT_ID=123456789
+    ```
 
-1. `.env`에 Telegram 설정을 입력합니다([@BotFather](https://t.me/BotFather)에서 발급):
+2. 선택 사항으로 기존 암호화 저장 데이터로 파싱과 알림을 확인합니다.
 
-   ```
-   TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
-   TELEGRAM_CHAT_ID=123456789
-   ```
+    ```bash
+    bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+    bin/mysekaimapper notify \
+      --output data/latest \
+      --task-id manual-001 \
+      --player-id 1234567890123456789
+    ```
 
-2. 수동으로 한 번 실행해 검증합니다:
+3. 일반 운영을 위해 서비스를 시작합니다.
 
-   ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
-   ```
+    ```bash
+    bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+    ```
 
-3. 일상 사용: 업로드 서버를 시작하면 세이브 도착 후 지도가 자동으로 생성되고 푸시됩니다. 캡처 방식은 두 가지입니다:
+`config/push_map.json`에 없는 플레이어는 기본적으로 Telegram으로 전송됩니다. 경로 A에는 Bark 맵, 푸시 맵 또는 공개 이미지 서버가 필요하지 않습니다.
 
-   - **MitM 모듈**: [업로드 API](/ko-KR/guide/upload-api)에 따라 업로드
-   - **Reqable 보고서 서버**: 매칭 규칙과 업로드 경로 설정([Reqable 보고서 서버](/ko-KR/guide/report-server) 참조)
+### 4. 경로 B — Bark 사용
 
-   ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
-   ```
+경로 A 구성에 더하여(오직 Bark로 라우팅하는 경우 Telegram은 생략 가능) 다음을 설정합니다.
 
-경로 A에서는 **필요하지 않습니다**: `config/push_map.json`, `config/bark_map.json`, 정적 파일 서버, `BARK_IMAGE_BASE`. 미설정 플레이어는 기본적으로 Telegram으로 푸시됩니다.
+1. `config/bark_map.example.json`을 바탕으로 `config/bark_map.json`을 만들고, 각 기기 키에 Bark 별칭을 매핑합니다.
+2. `config/push_map.example.json`을 바탕으로 `config/push_map.json`을 만들고, 플레이어 ID를 Bark 별칭, `telegram`, `none` 또는 이들의 조합에 매핑합니다.
 
-## 4. 경로 B: Bark 푸시 활성화(추가 설정 필요)
+    ```json
+    {
+      "1234567890123456789": ["klee"],
+      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456791": "none"
+    }
+    ```
 
-경로 A를 기반으로(Telegram 설정은 유지해도 되고, 비워 두고 Bark만 푸시해도 됩니다) 순서대로 다음을 채워 넣습니다:
+3. 저장소의 `data/` 디렉터리를 공개 HTTP(S) 정적 파일 서버로 노출하고, 그 공개 루트를 `BARK_IMAGE_BASE`로 설정합니다.
 
-1. **Bark key 설정**: `config/bark_map.json`에서 각 별칭에 대해 기기 key를 설정합니다(템플릿은 같은 디렉터리의 `bark_map.example.json` 참조).
-2. **플레이어 라우팅 설정**: `config/push_map.json`에서 플레이어 ID를 Bark 별칭으로 라우팅합니다. 예:
+    ```dotenv
+    BARK_IMAGE_BASE=https://maps.example.com
+    ```
 
-   ```json
-   {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
-   }
-   ```
-
-   ::: warning
-   **반드시 설정**: 미설정 플레이어는 기본적으로 Telegram으로 푸시됩니다. 이때 Telegram도 설정되어 있지 않으면 경고만 출력하고 건너뛰므로 결과적으로 아무것도 푸시되지 않습니다.
-   :::
-3. **정적 파일 서버 구축**: 프로젝트의 `data/` 디렉터리를 공개 네트워크에서 접근 가능한 HTTP(S) 서비스로 노출하고, `.env`에 `BARK_IMAGE_BASE=https://<도메인 또는 IP:포트>`를 설정합니다. 그렇지 않으면 Bark 알림에 지도 이미지가 포함되지 않습니다(자세한 내용은 [정적 파일 서버](/ko-KR/guide/static-server) 참조).
-4. 검증과 일상 사용은 경로 A(2, 3단계)와 동일합니다.
+구성되지 않은 플레이어는 Telegram으로 전송됩니다. Telegram을 구성하지 않았다면 구성되지 않은 플레이어는 알림을 받지 않으므로, Bark만 사용하는 경우에는 Bark 별칭을 명시적으로 지정하세요.

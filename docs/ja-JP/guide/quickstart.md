@@ -1,84 +1,84 @@
+<!-- GENERATED from doc/README.ja-JP.md; do not edit directly. -->
+
 # クイックスタート
 
-まずインストールと `.env` の基本設定を済ませてから、希望するプッシュ方法に応じてパスを選択してください：
+構成に合う通知経路を選択してください。
 
-- **パス A（Telegram Bot プッシュのみ）**：設定が最も少なく、まずこちらで一通り動かすことをお勧めします。
-- **パス B（Bark プッシュを有効化）**：パス A に加えて、Bark key、プレイヤールーティング、静的ファイルサーバーの追加設定が必要です。
+- **経路 A — Telegram のみ**：最も簡単な選択肢です。プレイヤーのルーティングファイルや公開画像サーバーは必要ありません。
+- **経路 B — Bark を有効化**：Bark キー、プレイヤールーティング、画像用の公開静的ファイルサーバーを設定します。
 
-## 1. インストール
+### 1. 必要要件とビルド
 
-```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# 任意:mysekai コマンドをインストール(python cli.py ... と同等)
-venv/bin/pip install -e .
-```
-
-## 2. .env の設定（必須項目）
+Go **1.25 以降**が必要です。
 
 ```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV` は MySekai セーブデータの AES-128-CBC 復号キー（各 16 バイト）で、どのパスを選んでも必ず設定する必要があります。その他の変数は選択したパスに応じて設定します：
+`.env` の `AES_KEY` と `AES_IV` には、16 バイトの AES-128-CBC 値が必要です。`.env` やローカルのルーティングファイルをコミットしないでください。
+
+### 2. `.env` を設定する
 
 | 変数 | 必須 | 説明 |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | MySekai セーブデータの AES-128-CBC キー、各 16 バイト |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 任意* | Telegram プッシュ（デフォルトチャネル）に必要。[@BotFather](https://t.me/BotFather) から取得 |
-| `BARK_ICON` | 任意 | Bark 通知アイコンの URL |
-| `BARK_IMAGE_BASE` | 任意 | 静的ファイルサーバーのルートアドレス（Bark の画像直リンク送信用、後述） |
-| `FALLBACK_IMAGE_BASE` | 任意 | `BARK_IMAGE_BASE` 未設定時の画像直リンクのフォールバックアドレス |
+| `AES_KEY`, `AES_IV` | はい | 16 バイトの MySekai AES-128-CBC キーおよび IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram のみ | [@BotFather](https://t.me/BotFather) から取得する Bot 認証情報と送信先チャット ID |
+| `BARK_ICON` | 任意 | Bark 通知に含めるアイコン URL |
+| `BARK_IMAGE_BASE` | Bark 画像 | アーカイブしたマップ画像の公開ベース URL |
+| `FALLBACK_IMAGE_BASE` | 任意 | `BARK_IMAGE_BASE` 未設定時の画像ベース URL |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 任意 | Reqable レポートエンドポイントの設定 |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 任意 | デフォルトのリポジトリディレクトリを上書き |
 
-::: warning
-\* Bark だけで通知を受け取りたい場合：Telegram の設定は空のままで構いませんが、**`config/push_map.json` でプレイヤーを Bark エイリアスにルーティングする必要があります**。そうしないと、未設定のプレイヤーはデフォルトで Telegram へ送られますが、Telegram の設定が不足している場合は警告が 1 行出力されてスキップされ、結果として何もプッシュされません。
-:::
+### 3. 経路 A — Telegram のみ
 
-## 3. パス A：Telegram Bot プッシュのみ（最小構成）
+1. `.env` に Telegram の変数を設定します。
 
-適用シーン：Telegram でマップと統計を受け取れればよく、他のコンポーネントには手を出したくない場合。
+    ```dotenv
+    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
+    TELEGRAM_CHAT_ID=123456789
+    ```
 
-1. `.env` に Telegram の設定を記入します（[@BotFather](https://t.me/BotFather) から取得）：
+2. 既存の暗号化済みセーブデータで、解析と通知を必要に応じて確認します。
 
-   ```
-   TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
-   TELEGRAM_CHAT_ID=123456789
-   ```
+    ```bash
+    bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+    bin/mysekaimapper notify \
+      --output data/latest \
+      --task-id manual-001 \
+      --player-id 1234567890123456789
+    ```
 
-2. 手動で一度実行して動作を確認します：
+3. 通常運用のためにサービスを起動します。
 
-   ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
-   ```
+    ```bash
+    bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+    ```
 
-3. 日常利用：アップロードサーバーを起動すると、セーブデータの到着後に自動でマップが生成されプッシュされます。キャプチャ方法は次の 2 通りです：
+`config/push_map.json` に存在しないプレイヤーは、デフォルトで Telegram に送信されます。経路 A では Bark マップ、push マップ、公開画像サーバーのいずれも必要ありません。
 
-   - **MitM モジュール**：[アップロードAPI](/ja-JP/guide/upload-api)に従ってアップロード
-   - **Reqable レポートサーバー**：マッチングルールとアップロードパスを設定（[Reqable レポートサーバー](/ja-JP/guide/report-server)を参照）
+### 4. 経路 B — Bark を有効にする
 
-   ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
-   ```
+経路 A の設定に加えて（Bark 専用のルートでは Telegram を省略できます）、次を行います。
 
-パス A で**不要なもの**：`config/push_map.json`、`config/bark_map.json`、静的ファイルサーバー、`BARK_IMAGE_BASE`。未設定のプレイヤーはデフォルトで Telegram にプッシュされます。
+1. `config/bark_map.example.json` から `config/bark_map.json` を作成し、Bark エイリアスと各デバイスキーを対応付けます。
+2. `config/push_map.example.json` から `config/push_map.json` を作成し、プレイヤー ID を Bark エイリアス、`telegram`、`none`、またはそれらの組み合わせへ対応付けます。
 
-## 4. パス B：Bark プッシュを有効化（追加設定が必要）
+    ```json
+    {
+      "1234567890123456789": ["klee"],
+      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456791": "none"
+    }
+    ```
 
-パス A をベースに（Telegram の設定はそのままでも、空のままにして Bark のみでも可）、以下の順に設定を追加します：
+3. リポジトリの `data/` ディレクトリを公開 HTTP(S) 静的ファイルサーバーで配信し、その公開ルートを `BARK_IMAGE_BASE` に設定します。
 
-1. **Bark key の設定**：`config/bark_map.json` で各エイリアスにデバイス key を設定します（テンプレートは同ディレクトリの `bark_map.example.json` を参照）。
-2. **プレイヤールーティングの設定**：`config/push_map.json` でプレイヤー ID を Bark エイリアスにルーティングします。例：
+    ```dotenv
+    BARK_IMAGE_BASE=https://maps.example.com
+    ```
 
-   ```json
-   {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
-   }
-   ```
-
-   ::: warning
-   **必須設定**：未設定のプレイヤーはデフォルトで Telegram に送られます。その時点で Telegram も未設定の場合は、警告が出力されてスキップされ、結果として何もプッシュされません。
-   :::
-3. **静的ファイルサーバーの構築**：プロジェクトの `data/` ディレクトリを公開ネットワークからアクセス可能な HTTP(S) サービスとして公開し、`.env` に `BARK_IMAGE_BASE=https://<ドメインまたはIP:ポート>` を設定します。そうしないと Bark 通知にマップ画像が含まれません（詳細は[静的ファイルサーバー](/ja-JP/guide/static-server)を参照）。
-4. 検証と日常利用はパス A（手順 2、3）と同じです。
+未設定のプレイヤーは Telegram が既定です。そのため Telegram が未設定の場合、未設定プレイヤーには通知されません。Bark 専用で使う場合は、Bark エイリアスを明示的に割り当ててください。

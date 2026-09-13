@@ -1,84 +1,84 @@
-# 快速上手
+<!-- GENERATED from doc/README.zh-TW.md; do not edit directly. -->
 
-先完成安裝與 `.env` 基礎設定，再依你想要的推播方式選擇路徑：
+# 快速開始
 
-- **路徑 A（僅 Telegram Bot 推播）**：設定最少，建議先跑通這條；
-- **路徑 B（啟用 Bark 推播）**：在路徑 A 的基礎上，需要額外設定 Bark key、玩家路由與靜態檔案伺服器。
+請選擇符合您環境的通知方式：
 
-## 1. 安裝
+- **路徑 A — 僅使用 Telegram**：最簡單的選項；不需要玩家路由檔或公開圖片伺服器。
+- **路徑 B — 啟用 Bark**：設定 Bark 金鑰、玩家路由與用於圖片的公開靜態檔案伺服器。
 
-```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# 可選:安裝 mysekai 命令(等同於 python cli.py ...)
-venv/bin/pip install -e .
-```
+### 1. 需求與建置
 
-## 2. 設定 .env（必填項目）
+需要 Go **1.25 或更新版本**。
 
 ```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV` 為 MySekai 存檔的 AES-128-CBC 解密金鑰（各 16 位元組），無論走哪條路徑都必須填寫。其餘變數依選擇的路徑設定：
+`.env` 中的 `AES_KEY` 與 `AES_IV` 必須是 16 位元組的 AES-128-CBC 值。請勿提交 `.env` 或本機路由檔。
 
-| 變數 | 必填 | 說明 |
+### 2. 設定 `.env`
+
+| 變數 | 必要性 | 說明 |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | MySekai 存檔的 AES-128-CBC 金鑰，各 16 位元組 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 選* | Telegram 推播（預設管道）需要，來自 [@BotFather](https://t.me/BotFather) |
-| `BARK_ICON` | 選 | Bark 通知圖示 URL |
-| `BARK_IMAGE_BASE` | 選 | 靜態檔案伺服器根位址（推播 Bark 圖片直連用，見下文） |
-| `FALLBACK_IMAGE_BASE` | 選 | 未設定 `BARK_IMAGE_BASE` 時的圖片直連備用位址 |
+| `AES_KEY`, `AES_IV` | 是 | 16 位元組的 MySekai AES-128-CBC 金鑰與 IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 僅 Telegram | 來自 [@BotFather](https://t.me/BotFather) 的 Bot 憑證與目標聊天 ID |
+| `BARK_ICON` | 選用 | 隨 Bark 通知附帶的圖示 URL |
+| `BARK_IMAGE_BASE` | Bark 圖片 | 已封存地圖圖片的公開基底 URL |
+| `FALLBACK_IMAGE_BASE` | 選用 | 未設定 `BARK_IMAGE_BASE` 時的圖片基底備援值 |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 選用 | Reqable 報告端點設定 |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 選用 | 覆寫儲存庫預設目錄 |
 
-::: warning
-\* 若只想用 Bark 收通知：可留空 Telegram 設定，但**必須在 `config/push_map.json` 裡把玩家路由到 Bark 別名**，否則未設定的玩家預設走 Telegram，而 Telegram 缺設定時只會印出一行警告並跳過，結果是什麼都不推。
-:::
+### 3. 路徑 A — 僅使用 Telegram
 
-## 3. 路徑 A：僅 Telegram Bot 推播（最簡）
+1. 在 `.env` 中設定 Telegram 變數：
 
-適用場景：只要在 Telegram 收到地圖與統計，不折騰其他元件。
+    ```dotenv
+    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
+    TELEGRAM_CHAT_ID=123456789
+    ```
 
-1. 在 `.env` 中填寫 Telegram 設定（來自 [@BotFather](https://t.me/BotFather)）：
+2. 可選：使用既有的加密存檔驗證解析與通知：
 
-   ```
-   TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
-   TELEGRAM_CHAT_ID=123456789
-   ```
+    ```bash
+    bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+    bin/mysekaimapper notify \
+      --output data/latest \
+      --task-id manual-001 \
+      --player-id 1234567890123456789
+    ```
 
-2. 手動跑一遍驗證：
+3. 啟動服務以進行一般操作：
 
-   ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
-   ```
+    ```bash
+    bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+    ```
 
-3. 日常使用：啟動上傳服務，存檔送達後自動產生地圖並推播。兩種抓封包方式任選：
+未出現在 `config/push_map.json` 中的玩家預設會使用 Telegram。路徑 A 不需要 Bark 對應檔、推送對應檔或公開圖片伺服器。
 
-   - **MitM 模組**：按[上傳介面](/zh-TW/guide/upload-api)上傳存檔
-   - **Reqable 上報伺服器**：設定匹配規則與上報路徑（見[Reqable 上報伺服器](/zh-TW/guide/report-server)）
+### 4. 路徑 B — 啟用 Bark
 
-   ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
-   ```
+除路徑 A 的設定外（僅使用 Bark 的路由可省略 Telegram）：
 
-路徑 A **不需要**：`config/push_map.json`、`config/bark_map.json`、靜態檔案伺服器、`BARK_IMAGE_BASE`。未設定的玩家預設就推播到 Telegram。
+1. 由 `config/bark_map.example.json` 建立 `config/bark_map.json`，將每個 Bark 別名對應至裝置金鑰。
+2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 Bark 別名、`telegram`、`none`，或它們的組合：
 
-## 4. 路徑 B：啟用 Bark 推播（需額外設定）
+    ```json
+    {
+      "1234567890123456789": ["klee"],
+      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456791": "none"
+    }
+    ```
 
-在路徑 A 的基礎上（Telegram 設定可保留，也可留空只推 Bark），依順序補齊：
+3. 透過公開 HTTP(S) 靜態檔案伺服器公開儲存庫的 `data/` 目錄，並將其公開根 URL 設為 `BARK_IMAGE_BASE`：
 
-1. **設定 Bark key**：在 `config/bark_map.json` 中為每個別名設定裝置 key（範本見同目錄 `bark_map.example.json`）。
-2. **設定玩家路由**：在 `config/push_map.json` 中把玩家 ID 路由到 Bark 別名，例如：
+    ```dotenv
+    BARK_IMAGE_BASE=https://maps.example.com
+    ```
 
-   ```json
-   {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
-   }
-   ```
-
-   ::: warning
-   **必須設定**：未設定的玩家預設走 Telegram；若此時 Telegram 又未設定，只會印出警告並跳過，結果什麼都不推。
-   :::
-3. **架設靜態檔案伺服器**：把專案的 `data/` 目錄暴露為公開網路可達的 HTTP(S) 服務，並在 `.env` 設定 `BARK_IMAGE_BASE=https://<域名或IP:端口>`。否則 Bark 通知不帶地圖圖片（詳見[靜態檔案伺服器](/zh-TW/guide/static-server)）。
-4. 驗證與日常使用同路徑 A（第 2、3 步）。
+未設定的玩家預設會使用 Telegram。因此若未設定 Telegram，未設定的玩家將不會收到通知；僅使用 Bark 時，請明確指定 Bark 別名。

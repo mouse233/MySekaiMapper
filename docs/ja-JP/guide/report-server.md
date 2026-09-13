@@ -1,48 +1,37 @@
-# Reqable レポートサーバー
+<!-- GENERATED from doc/README.ja-JP.md; do not edit directly. -->
 
-Reqable の「レポートサーバー」機能（v2.20.0+）は、キャプチャした各 HTTP セッションを HAR JSON 形式で自動的にあなたのサーバーへ POST します。gzip / brotli / zstd による圧縮も選択可能です。レポートエンドポイントは**デフォルトで有効**で、分割アップロードと共存します——`python cli.py server` で両方のエンドポイントが提供されます。無効にするには `REPORT_ENABLED=0` を設定します：
+# Reqable Report Server
+
+Reqable v2.20.0以降では、キャプチャした各HTTPセッションをHAR JSONとしてこのサービスにPOSTできます。レポートエンドポイントはデフォルトで有効になっており、`/uploadMySekai`と併用できます。
 
 ```bash
-python cli.py server
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 ```
 
-設定（`.env`）：
-
-| 変数 | デフォルト | 説明 |
+| 変数 | デフォルト値 | 説明 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | `1`（有効） | `0` / `false` を設定するとレポートエンドポイントが無効になります |
-| `REPORT_PATH` | `/reqable/report` | エンドポイントのパス。Reqable の「アップロードパス」欄にこの値を入力します |
-| `REPORT_MAX_SIZE` | `1` | HAR ボディのサイズ上限（MB。デフォルト 1、分割アップロードの上限と同じ） |
-| `REPORT_TOKEN` | （空） | 任意の共有トークン。設定するとエンドポイントは `X-Report-Token` ヘッダーを要求します |
+| `REPORT_ENABLED` | `1` | レポートを無効にするには `0`、`false`、`no`、または `off` を設定 |
+| `REPORT_PATH` | `/reqable/report` | Reqableで設定するエンドポイントパス |
+| `REPORT_MAX_SIZE` | `1` | 展開後のHAR本文の最大サイズ（MiB） |
+| `REPORT_TOKEN` | 空 | `X-Report-Token` に必要なオプション値 |
 
-## 処理の流れ
+### 処理フロー
 
-レポートを受け取るたびに、サーバーは次の処理を行います：
+各レポートについて、サービスは次の処理を行います。
 
-1. `Content-Encoding`（gzip / br / zstd）に従ってボディを展開し、HAR を解析します。
-2. `log.entries` を走査し、「レスポンスボディ（フォールバック：リクエストボディ）が `AES_KEY` / `AES_IV` で復号でき、MySekai セーブデータとして解析できる」最初のセッションを採用します。ルールに一致してもセーブデータと無関係な通信はスキップされます。
-3. セッション URL（`/user/<id>`）からプレイヤー ID を解決します。
-4. セーブデータを `data/raw_mysekai/` に保存し、分割アップロードと同じ「生成 → アーカイブ → プッシュ」パイプラインを開始します。
+1. `identity`、`gzip`、`br`、`zstd`、または `zstandard` のコンテンツを展開し、HARを解析します。content-sizeフィールドを持たないストリーミングzstdフレームにも対応しています。
+2. `log.entries` を走査し、`AES_KEY`/`AES_IV` で復号でき、かつMySekaiアーカイブとして検証に成功した最初のレスポンス本文（該当しない場合はリクエスト本文）を受け付けます。
+3. 一致したセッションURLの `/user/<id>` から `player_id` を抽出します。
+4. 暗号化されたアーカイブを `data/raw_mysekai/` に保存し、アップロードで使用されるものと同じ render → archive → notify パイプラインを開始します。
 
-::: warning
-Reqable は各セッションを**1 回だけ送信し、失敗しても再試行しません**。そのためエンドポイントはできるだけ早く `200` を返します。サーバーを安定して稼働させ、`[REPORT]` ログに注意してください。
-:::
+> Reqableは各セッションを1回だけレポートし、再試行しません。サービスを稼働状態に保ち、`[REPORT]` ログを監視してください。構文的に有効なHARであれば、MySekaiアーカイブが含まれていなくても `ok` が返されます。レポート内で最初に見つかった有効なアーカイブのみが処理されます。
 
-1 回のレポートにつき処理されるセーブデータは **1 つだけ**（最初の有効なエントリ）です。複数のエンドポイントに一致するルールでも、重複プッシュは発生しません。
+### Reqableの設定
 
-## セキュリティ
+- **マッチングルール**：`https://<game-api-domain>/api/user/*/mysekai*`
+- **サーバー URL**：`http://<your-server>:9478/reqable/report`（またはカスタムの `REPORT_PATH`）
 
-プロトコル自体に認証はありません。Reqable はカスタムヘッダーを付加できないため、`REPORT_TOKEN` に頼るのではなく、`REPORT_PATH` にランダムな文字列を組み込む（例：`/reqable/report/9f3a…`）か、リバースプロキシ / ファイアウォールでアクセスを制限することをお勧めします。
-
-## Reqable 側の設定
-
-- URL マッチングルール：`https://<ゲームAPIホスト>/api/user/*/mysekai*`
-- アップロードパス：`http://<あなたのサーバー>:9478/reqable/report`
-- 圧縮アルゴリズム：gzip / brotli / zstd のいずれでも可（サーバーは 3 種類すべて対応）
-
-5 つのサーバーのゲーム API ホスト：
-
-| サーバー | ゲーム API ホスト |
+| サーバー | ゲームAPIドメイン |
 | --- | --- |
 | JP | `https://production-game-api.sekai.colorfulpalette.org` |
 | EN | `https://n-production-game-api.sekai-en.com` |
@@ -50,12 +39,17 @@ Reqable は各セッションを**1 回だけ送信し、失敗しても再試�
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-推奨マッチングルール：`https://<ドメイン>/api/user/*/mysekai*`（CN で実測検証済み）。お使いのサーバーの mysekai API パスが異なる場合は、実際のパスに合わせてルールを調整してください。
+このマッチングパターンはCNで検証済みです。お使いの地域で別のMySekai APIパスが使用されている場合は、キャプチャしたURLを確認し、ルールを調整してください。
 
-## curl 例
+### セキュリティ
+
+Reqableではカスタムの `X-Report-Token` ヘッダーを追加できません。`/reqable/report/<random>` のような長くランダムな `REPORT_PATH` を使用し、リバースプロキシまたはファイアウォールでアクセスを制限してください。適切な制御なしにデフォルトのエンドポイントを公開しないでください。
+
+### gzip HARの手動テスト
 
 ```bash
 gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
-  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Encoding: gzip' \
   --data-binary @-
 ```

@@ -1,194 +1,209 @@
 # MySekaiMapper
 
-🌐 语言: [English](../README.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
+🌐 **Languages**: [English](../README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/zh-CN/>
 
-《世界计划 多彩舞台》（Project Sekai）MySekai（我的世界）采集点地图生成工具。
+MySekaiMapper 是面向 *Project SEKAI* MySekai 存档的 Go 服务：将加密存档转换为采集点地图，并将结果发送到 Telegram 或 Bark（Day.app）。
 
-**项目初衷**：搭配 MitM 模块或 Reqable 的「上报服务器」功能使用——抓包工具捕获游戏内 MySekai 数据包后，自动上传到本服务（一次 POST 即可，分片上传亦受支持）；服务端解密加密存档、提取各站点的资源掉落坐标，绘制采集地图，再把结果（含稀有资源统计）推送到玩家的 Telegram / Bark（iOS Day.app），全程无需人工介入。
+它可配合 MitM 抓包客户端或 Reqable 的 **上报服务器（Report Server）** 使用：抓包工具上传 MySekai 存档，服务解密、解析并绘制地图和稀有资源摘要，归档产物后自动发送通知，无需手动处理。
 
-一次任务会生成 **4 张地图**：`site_5.png`（初始空地）、`site_6.png`（心愿沙滩）、`site_7.png`（烂漫花田）、`site_8.png`（忘却之所），外加一份 `rare_resources.txt` 稀有资源统计。
+常见区域会生成 `site_5.png`（草地）、`site_6.png`（海滩）、`site_7.png`（花园）、`site_8.png`（纪念地）和 `rare_resources.txt`。渲染器与通知器也支持额外的常规 `site_*.png` 文件。
 
-本项目已在朝夕光年（Nuverse）运营的 CN 服 / TW 服中测试通过，其他服务器可用性未知。
+抓包流程已经在朝夕光年运营的国服和台服验证；其他地区是否可用取决于 API 路径和存档格式。
 
 ## 工作流程
 
-```
-游戏 API 响应 → MitM 模块 / Reqable 上报服务器（抓包捕获 mysekai 数据）
-   │  ① 自动上传（一次 POST，分片亦支持）→ server.py 自动处理
-   │  ② 或手动放置 .bin 存档 → cli.py generate
-   ▼
-parser.py    AES-128-CBC 解密 + msgpack 解析 + 坐标旋转
-   ▼
-render.py    绘制 site_5.png ~ site_8.png + rare_resources.txt → data/latest/
-   ▼
-notify.py    推送：
-             ├─ Telegram  ：图片 multipart 直传，无需公网直链 ← 默认渠道
-             └─ Bark      ：以 image= URL 直链通知，需静态文件服务器
+```text
+游戏 API 响应 → MitM 模块 / Reqable 上报服务器
+    │  ① POST /uploadMySekai（单次或有序分片上传）
+    │  ② POST /reqable/report（HAR，可选 gzip / br / zstd）
+    ▼
+mysekaimapper serve
+    ├─ AES-128-CBC 解密 + MsgPack 解析 + 坐标归一化
+    ├─ 绘制 site_*.png + rare_resources.txt
+    ├─ 归档到 data/archive/by-id/<player_id>/<timestamp>/
+    └─ 发布 data/latest/ 并通知
+         ├─ Telegram：以 multipart 媒体组上传本地图片
+         └─ Bark：从公开静态文件服务器读取图片 URL
 ```
 
 ## 快速上手
 
-先完成安装与 `.env` 基础配置，再按你想要的推送方式选择路径：
+请选择适合你环境的通知方式：
 
-- **路径 A（仅 Telegram Bot 推送）**：配置最少，推荐先跑通这条；
-- **路径 B（启用 Bark 推送）**：在路径 A 基础上，需要额外配置 Bark key、玩家路由与静态文件服务器。
+- **路径 A — 仅使用 Telegram**：最简单的选项；不需要玩家路由文件或公开图片服务器。
+- **路径 B — 启用 Bark**：配置 Bark 密钥、玩家路由以及用于图片的公开静态文件服务器。
 
-### 1. 安装
+### 1. 前置条件与构建
 
-```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# 可选:安装 mysekai 命令(等价于 python cli.py ...)
-venv/bin/pip install -e .
-```
-
-### 2. 配置 .env（必填项）
+需要 Go **1.25 或更高版本**。
 
 ```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV` 为 MySekai 存档的 AES-128-CBC 解密密钥（各 16 字节），无论走哪条路径都必须填写。其余变量按选择的路径配置：
+`.env` 中的 `AES_KEY` 和 `AES_IV` 必须是 16 字节的 AES-128-CBC 密钥和 IV。请勿提交 `.env` 或本地路由文件。
+
+### 2. 配置 `.env`
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | MySekai 存档的 AES-128-CBC 密钥，各 16 字节 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 选* | Telegram 推送（默认渠道）需要，来自 [@BotFather](https://t.me/BotFather) |
-| `BARK_ICON` | 选 | Bark 通知图标 URL |
-| `BARK_IMAGE_BASE` | 选 | 静态文件服务器根地址（推送 Bark 图片直链用，见下文） |
-| `FALLBACK_IMAGE_BASE` | 选 | 未配置 `BARK_IMAGE_BASE` 时的图片直链兜底地址 |
+| `AES_KEY`, `AES_IV` | 是 | 16 字节的 MySekai AES-128-CBC 密钥和 IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 仅 Telegram | 从 [@BotFather](https://t.me/BotFather) 获取的 Bot 凭据和目标聊天 ID |
+| `BARK_ICON` | 可选 | Bark 通知中包含的图标 URL |
+| `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
+| `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 可选 | Reqable 上报端点设置 |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 可选 | 覆盖仓库默认目录 |
 
-> \* 若只想用 Bark 收通知：可留空 Telegram 配置，但**必须在 `config/push_map.json` 里把玩家路由到 Bark 别名**，否则未配置玩家默认走 Telegram，而 Telegram 缺配置时只会打印一行警告并跳过，结果是什么都不推。
+### 3. 路径 A — 仅使用 Telegram
 
-### 3. 路径 A：仅 Telegram Bot 推送（最简）
+1. 在 `.env` 中设置 Telegram 变量：
 
-适用场景：只要在 Telegram 收到地图与统计，不折腾其他组件。
-
-1. 在 `.env` 中填写 Telegram 配置（来自 [@BotFather](https://t.me/BotFather)）：
-
-   ```
+   ```dotenv
    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
    TELEGRAM_CHAT_ID=123456789
    ```
 
-2. 手动跑一遍验证：
+2. 可选：使用已有加密存档验证解析和通知：
 
    ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
+   bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+   bin/mysekaimapper notify \
+     --output data/latest \
+     --task-id manual-001 \
+     --player-id 1234567890123456789
    ```
 
-3. 日常使用：启动上传服务，存档到达后自动生成地图并推送。两种抓包方式任选：
-
-   - **MitM 模块**：按「上传接口」上传存档
-   - **Reqable 上报服务器**：配置匹配规则与上报路径（见下文「Reqable 上报服务器」章节）
+3. 启动服务进行正常运行：
 
    ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
+   bin/mysekaimapper serve --host 0.0.0.0 --port 9478
    ```
 
-路径 A **不需要**：`config/push_map.json`、`config/bark_map.json`、静态文件服务器、`BARK_IMAGE_BASE`。未配置的玩家默认就推送到 Telegram。
+`config/push_map.json` 中没有配置的玩家默认使用 Telegram。路径 A 不需要 Bark 路由文件、推送路由文件或公开图片服务器。
 
-### 4. 路径 B：启用 Bark 推送（需额外配置）
+### 4. 路径 B — 启用 Bark
 
-在路径 A 的基础上（Telegram 配置可保留，也可留空只推 Bark），按顺序补齐：
+在路径 A 的配置基础上（仅使用 Bark 的路由可以省略 Telegram）：
 
-1. **配置 Bark key**：在 `config/bark_map.json` 中为每个别名配置设备 key（模板见同目录 `bark_map.example.json`）。
-2. **配置玩家路由**：在 `config/push_map.json` 中把玩家 ID 路由到 Bark 别名，例如：
+1. 从 `config/bark_map.example.json` 创建 `config/bark_map.json`，将 Bark 别名映射到各设备密钥。
+2. 从 `config/push_map.example.json` 创建 `config/push_map.json`，将玩家 ID 映射到 Bark 别名、`telegram`、`none` 或它们的组合：
 
    ```json
    {
      "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
+     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456791": "none"
    }
    ```
 
-   ⚠️ **必须配置**：未配置的玩家默认走 Telegram；若此时 Telegram 又未配置，只会打印警告并跳过，结果什么都不推。
-3. **搭建静态文件服务器**：把项目的 `data/` 目录暴露为公网可达的 HTTP(S) 服务，并在 `.env` 设置 `BARK_IMAGE_BASE=https://<域名或IP:端口>`。否则 Bark 通知不带地图图片（详见下文「搭建静态文件服务器」）。
-4. 验证与日常使用同路径 A（第 2、3 步）。
+3. 使用公开 HTTP(S) 静态文件服务器提供仓库的 `data/` 目录，并将公开根路径设置为 `BARK_IMAGE_BASE`：
+
+   ```dotenv
+   BARK_IMAGE_BASE=https://maps.example.com
+   ```
+
+未配置的玩家默认使用 Telegram。因此，如果没有配置 Telegram，未配置的玩家不会收到通知；仅使用 Bark 时，请为玩家显式分配 Bark 别名。
+
+## 运行服务
+
+```bash
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+```
+
+服务会输出就绪地址，并记录上传/上报接收、入队、解析、渲染、归档、通知、耗时、任务 ID 与 `player_id` 等生命周期日志。日志不会记录存档正文、密钥、令牌或完整通知 URL。
+
+进程处理 `SIGINT` 和 `SIGTERM`：先停止接收 HTTP 请求，再最多等待 15 秒处理已接收任务。
+
+如果二进制在仓库外运行，请传入 `--root /path/to/MySekaiMapper`；否则会从工作目录自动发现仓库根目录。
 
 ## 上传接口
 
-客户端把捕获的 mysekai 响应体通过 `POST /uploadMySekai` 上传（一次 POST 即可；分片上传仅作兼容保留）。手动用 curl 按同一协议调试亦可。header 如下：
+`POST /uploadMySekai` 直接接收加密的 MySekai 响应正文。通常单次上传即可；为兼容抓包客户端，仍支持有序分片。
 
-| Header | 说明 |
-| --- | --- |
-| `X-Upload-Id` | 上传任务 ID（仅字母数字与 `-` / `_`，长度 1~64），必填 |
-| `X-Chunk-Index` | 分片序号，从 0 开始（单片上传恒为 0），必填 |
-| `X-Total-Chunks` | 总分片数（1~10；单片上传填 1），必填 |
-| `X-Original-Url` | 客户端原始页面 URL，用于解析玩家 ID（如 `https://.../user/123456...`）；**可选**，缺失时玩家 ID 记为 `unknown` |
-| `X-Script-Version` | 客户端脚本版本号；服务端忽略该头，可不传 |
+| 请求头 | 必填 | 含义 |
+| --- | --- | --- |
+| `X-Upload-Id` | 是 | 匹配 `^[A-Za-z0-9_-]{1,64}$` 的任务标识符 |
+| `X-Chunk-Index` | 是 | 从零开始的分片序号 |
+| `X-Total-Chunks` | 是 | 分片总数，范围为 1 到 10 |
+| `X-Original-Url` | 否 | 游戏原始 URL；`/user/<id>` 用于提供玩家路由 |
+| `X-Script-Version` | 否 | 为兼容抓包客户端而接受，服务会忽略 |
 
-请求体为原始二进制存档数据（无需 multipart）。
+加密存档、每个分片和合并后的上传均限制为 1 MiB。成功接收后返回纯文本 `OK`；绘制和通知会在后台继续进行。
 
-限制：
-
-- 单文件总大小 ≤1MB（`MAX_TOTAL_SIZE`）
-- 单个分片 ≤1MB（`MAX_CHUNK_SIZE`，超限返回 413）
-- 总分片数 ≤10（`MAX_CHUNKS`）
-
-> 注意：当前存档约 200KB，**一次 POST 即可传完**。分片上传仅为兼容旧抓包客户端保留；若使用分片，每片应明显小于 1MB（例如 256KB），10 片可传满 1MB 上限。
-
-响应：
-
-| 状态码 | 含义 |
-| --- | --- |
-| `200` | 存档已接收，返回 `OK`；服务端自动完成：合并存档（如分片）→ 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 推送通知，全程无需人工介入 |
-| `400` | 参数非法（upload id 格式错误、分片序号越界、总分片数不在 1~10） |
-| `413` | 超过大小限制（单分片超 1MB，或累计总大小超 1MB） |
-
-### curl 示例
-
-单次 POST（当前存档一次即可传完）：
+### 单次上传示例
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
-  -H "X-Upload-Id: demo12345" \
-  -H "X-Chunk-Index: 0" \
-  -H "X-Total-Chunks: 1" \
-  -H "X-Original-Url: https://example.com/user/1234567890123456789" \
+  -H 'X-Upload-Id: demo12345' \
+  -H 'X-Chunk-Index: 0' \
+  -H 'X-Total-Chunks: 1' \
+  -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
   --data-binary @mysekai.bin
 ```
 
-## Reqable 上报服务器
+### 分片上传示例
 
-不依赖自定义抓包客户端，也可以直接用 Reqable 内置的「上报服务器」功能（Reqable v2.20.0+）：它会把每个已捕获的 HTTP 会话按 [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON 格式自动 POST 到你的服务器，可选 gzip / brotli / zstd 压缩。上报端点**默认开启**，与分片上传共存——`python cli.py server` 同时提供两个接口；设 `REPORT_ENABLED=0` 可关闭：
+使用相同的 `X-Upload-Id`、有序的索引，且最多十个分片：
 
 ```bash
-python cli.py server
+file=mysekai.bin
+id=$(openssl rand -hex 5)
+split -b 262144 -a 2 -d "$file" /tmp/ms_chunk_
+total=$(ls /tmp/ms_chunk_* | wc -l | tr -d ' ')
+
+i=0
+for chunk in /tmp/ms_chunk_*; do
+  curl -s -X POST http://127.0.0.1:9478/uploadMySekai \
+    -H "X-Upload-Id: $id" \
+    -H "X-Chunk-Index: $i" \
+    -H "X-Total-Chunks: $total" \
+    -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
+    --data-binary @"$chunk"
+  echo
+  i=$((i + 1))
+done
+rm -f /tmp/ms_chunk_*
 ```
 
-配置（`.env`）：
+常见响应包括：成功接收时为 `200 OK`，标识符或分片范围无效时为 `400 Bad Request`，超过大小限制时为 `413 Payload Too Large`，缺少必填请求头或其值不是整数时为 `422 Unprocessable Entity`。
+
+## Reqable 上报服务器
+
+Reqable v2.20.0+ 可以将捕获的 HTTP 会话作为 HAR JSON POST 到本服务。上报端点默认启用，并与 `/uploadMySekai` 共存。
+
+```bash
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+```
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | `1`（开启） | 设 `0` / `false` 关闭上报端点 |
-| `REPORT_PATH` | `/reqable/report` | 端点路径，填入 Reqable 的「上报路径」 |
-| `REPORT_MAX_SIZE` | `1` | HAR 请求体大小上限（MB，默认 1，与分片上传上限一致） |
-| `REPORT_TOKEN` | （空） | 可选共享令牌；设置后端点要求请求头 `X-Report-Token` 匹配 |
+| `REPORT_ENABLED` | `1` | 设置为 `0`、`false`、`no` 或 `off` 可禁用上报 |
+| `REPORT_PATH` | `/reqable/report` | 在 Reqable 中配置的端点路径 |
+| `REPORT_MAX_SIZE` | `1` | 解压后的 HAR 请求体大小上限，单位为 MiB |
+| `REPORT_TOKEN` | 空 | 可选；要求匹配 `X-Report-Token` |
 
-每次上报，服务端会：
+### 处理流程
 
-1. 按 `Content-Encoding`（gzip / br / zstd）解压并解析 HAR。
-2. 遍历 `log.entries`，取第一个「响应体（兜底：请求体）能用 `AES_KEY` / `AES_IV` 解密并解析为 MySekai 存档」的会话——命中规则但与存档无关的流量会被跳过。
-3. 从会话 URL 解析玩家 ID（`/user/<id>`，与 `X-Original-Url` 同规则）。
-4. 存档保存到 `data/raw_mysekai/`，并启动与分片上传相同的 生成 → 归档 → 推送 流水线。
+每次上报时，服务会：
 
-注意：
+1. 解压 `identity`、`gzip`、`br`、`zstd` 或 `zstandard` 内容并解析 HAR；也支持没有 content-size 字段的流式 zstd 帧。
+2. 遍历 `log.entries`，接收第一个能够使用 `AES_KEY`/`AES_IV` 解密并验证为 MySekai 存档的响应体；响应体不匹配时回退检查请求体。
+3. 从命中会话 URL 的 `/user/<id>` 中提取 `player_id`。
+4. 将加密存档保存至 `data/raw_mysekai/`，并启动与上传接口相同的“绘制 → 归档 → 通知”流水线。
 
-- Reqable 每个会话**只上报 1 次且失败不重试**，因此端点会尽快返回 `200`。请保持服务稳定，并留意 `[REPORT]` 日志。
-- 每次上报只处理 **1 份**存档（第一个有效条目），因此匹配多个接口的规则不会造成重复推送。
-- 安全：协议本身没有鉴权。Reqable 无法附加自定义请求头，建议把随机串拼进 `REPORT_PATH`（如 `/reqable/report/9f3a…`），或用反向代理 / 防火墙做访问限制，而不是依赖 `REPORT_TOKEN`。
+> Reqable 每个会话只上报一次，不会重试。请保持服务可用并关注 `[REPORT]` 日志。语法正确但不含 MySekai 存档的 HAR 仍会返回 `ok`；每次上报只处理第一份有效存档。
 
-Reqable 侧配置示例：
+### Reqable 侧配置
 
-- URL 匹配规则：`https://<游戏API域名>/api/user/*/mysekai*`
-- 上报路径：`http://<你的服务器>:9478/reqable/report`
-- 压缩算法：gzip / brotli / zstd 均可（服务端三种都支持）
-
-五个服务器的游戏 API 域名：
+- **匹配规则**：`https://<游戏 API 域名>/api/user/*/mysekai*`
+- **服务器 URL**：`http://<你的服务器>:9478/reqable/report`（或自定义的 `REPORT_PATH`）
 
 | 服务器 | 游戏 API 域名 |
 | --- | --- |
@@ -198,197 +213,172 @@ Reqable 侧配置示例：
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-推荐匹配规则：`https://<域名>/api/user/*/mysekai*`（CN 已实测验证）。若你所在服务器的 mysekai 接口路径不同，请按实际路径调整规则。
+该匹配规则已在国服验证。如果所在地区使用其他 MySekai API 路径，请检查实际抓包 URL 后调整规则。
 
-手动 curl 验证（gzip 压缩的 HAR）：
+### 安全
+
+Reqable 无法附加自定义 `X-Report-Token` 请求头。请使用足够长的随机 `REPORT_PATH`，例如 `/reqable/report/<random>`，再通过反向代理或防火墙限制访问；不要在没有保护措施时公开默认端点。
+
+### 手动 gzip HAR 测试
 
 ```bash
 gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
-  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Encoding: gzip' \
   --data-binary @-
 ```
 
-## 推送机制
+## 通知与静态文件
 
-### 默认走 Telegram Bot
+从 `config/push_map.example.json`、`config/bark_map.example.json` 创建本地配置。这些文件包含玩家/设备标识，已被 Git 忽略。
 
-- 未在 `config/push_map.json` 中配置的玩家，**一律默认推送到 Telegram**；`push_map.json` 文件缺失时同样默认 Telegram。
-- Telegram 使用 Bot API `sendMediaGroup`，把 4 张本地 PNG 作为 multipart 直接上传，**不需要公网直链，也不依赖静态文件服务器**；`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 缺失时只打印警告并跳过，不影响 Bark 渠道。
+### 玩家路由
 
-### Bark 推送依赖公开直链
+`config/push_map.json` 将玩家 ID 映射为 `telegram`、Bark 别名、`none`、`+tg` 字符串或方法数组：
 
-Bark（Day.app）通知中的图片是 **URL 直链**：`notify.py` 把图片地址编码进 `image=` 参数发给 `api.day.app`，由 Bark 服务器再去抓取这张图。因此该 URL 必须**公网可达（建议 HTTPS）**，否则 Bark 通知里没有图片。
-
-4 张地图的直链由 `notify.py` 按以下优先级拼出：
-
-```python
-base = image_base or BARK_IMAGE_BASE or FALLBACK_IMAGE_BASE
-image_url = base.rstrip("/") + f"/site_{i}.png"   # i = 5..8
+```json
+{
+  "1234567890123456789": ["telegram"],
+  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456791": "none"
+}
 ```
 
-| 场景 | base 取值 | 图片直链形态 |
-| --- | --- | --- |
-| 服务器流程（推荐） | `BARK_IMAGE_BASE` + `/archive/by-id/<user_id>/<时间戳>` | `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<时间戳>/site_{5..8}.png` |
-| 手动 CLI 推送 | `BARK_IMAGE_BASE` 或 `FALLBACK_IMAGE_BASE` | `<base>/site_{5..8}.png`（需把 `data/latest/` 暴露在 `<base>/` 下） |
+没有可用路由值的玩家默认走 Telegram。
 
-> 注意：服务器流程只有在配置了 `BARK_IMAGE_BASE` 时才会拼出带归档路径的直链；若只配了 `FALLBACK_IMAGE_BASE`，服务器推送的直链同样是 `<FALLBACK_IMAGE_BASE>/site_{5..8}.png`。
+### Telegram
 
-## 静态文件服务器示例（可选）
+Telegram 将全部生成的常规 `site_*.png` 作为本地 multipart 媒体组上传。它需要 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`，但不需要公网图片服务器。Telegram 失败不会阻止已配置的 Bark 尝试。
 
-目的：把 `data/archive/` 目录暴露成公开 URL，让 Bark 服务器能抓到四张地图。
+### Bark
 
-**推荐做法**：静态服务器的根目录指向项目的 `data/`，再设置 `BARK_IMAGE_BASE=https://<你的域名或IP:端口>`，即可自动映射：
+Bark 会发送稀有资源摘要，并为全部生成的常规 `site_*.png` 分别通知。`config/bark_map.json` 负责别名与设备密钥的映射：
 
-```
-data/archive/by-id/<user_id>/<时间戳>/site_5.png
-  →  https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<时间戳>/site_5.png
+```json
+{ "klee": "paste-your-bark-key-here" }
 ```
 
-常用示例：
+Bark 会自行抓取图片 URL。自动服务任务应将 `BARK_IMAGE_BASE` 指向公开的 `data/` 根目录，归档 URL 如下：
 
-Python 内置（最简，适合内网/测试）：
-
-```bash
-python -m http.server 8000 --directory data
-# 然后设置 BARK_IMAGE_BASE=http://<服务器IP>:8000
+```text
+https://maps.example.com/archive/by-id/<player_id>/<timestamp>/site_5.png
 ```
 
-nginx：
+手动 `notify` 的图片根路径优先级为 `--image-base`、`BARK_IMAGE_BASE`、`FALLBACK_IMAGE_BASE`；该根路径应直接公开所选输出目录。
+
+### 静态文件服务器
+
+Bark 图片不可使用 `localhost` 或 `127.0.0.1`。请使用公网 HTTPS，例如：
 
 ```nginx
 server {
     listen 443 ssl;
     server_name maps.example.com;
-    # ... ssl 证书配置 ...
     root /path/to/MySekaiMapper/data;
 }
 ```
-
-Caddy（自动 HTTPS）：
 
 ```bash
 caddy file-server --root /path/to/MySekaiMapper/data --listen :443
 ```
 
-注意事项：
+通知器会忽略输出目录中的符号链接，不会记录凭据或完整通知 URL。
 
-- **不要用 `127.0.0.1` / `localhost`** 作为直链地址；Bark 服务器需要能访问该地址，一般直接选公网可达的地址，内网 IP 仅在确认互通时使用。
-- **只用 Telegram 则完全不需要静态服务器**，跳过本节即可。
-- 手动 `cli.py notify` 的直链不带归档路径，需要另把 `data/latest/` 暴露在 `BARK_IMAGE_BASE` 下；或用 `FALLBACK_IMAGE_BASE` 指向输出目录（例如 `FALLBACK_IMAGE_BASE=http://<host>:5500/output` → 该服务器把 `data/latest/` 挂在 `/output` 下）。
+## 命令行参考
 
-## 玩家推送路由（可选）
-
-在 `config/` 下按需创建本地配置（格式见同目录 `*.example.json`，已被 `.gitignore` 忽略）：
-
-- `push_map.json` — 玩家 ID → 推送方式：值为 `"telegram"`、Bark 别名、`"none"`（不推送），也支持组合写法 `["alias", "telegram"]` 或 `"alias+tg"`。**未配置的玩家默认 `telegram`**。
-
-  ```json
-  {
-    "1234567890123456789": ["telegram"],
-    "1234567890123456790": ["telegram", "klee"]
-  }
-  ```
-
-- `bark_map.json` — Bark 别名 → 设备 key：
-
-  ```json
-  { "klee": "paste-your-bark-key-here" }
-  ```
-
-## 常见问题
-
-- **Bark 通知收不到图片？** 检查直链是否公网可达：在浏览器/手机网络下直接打开 `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<时间戳>/site_5.png` 应能显示图片；内网地址、`127.0.0.1`、或证书异常的 HTTPS 都会导致抓图失败。
-- **什么都没推送？** 检查 `push_map.json` 是否把该玩家设成了 `"none"`；只配了 Bark 的用户是否忘了在该玩家上配置 Bark 别名（未配置玩家默认走 Telegram）；Telegram 渠道是否配了 token 与 chat id；Bark 渠道是否缺 key（报 `[BARK] ... failed` 日志）。
-- **不想收到 Bark 只想要 Telegram？** 什么都不用做——未配置的玩家默认就走 Telegram。
-
-## 命令行工具（cli.py）
-
-所有功能都可通过 `cli.py` 驱动；安装后（`pip install -e .`）也可用等价的 `mysekai` 命令。命令成功退出码为 0，出错为 1（错误信息打印到 stderr）。
+先构建一次可执行文件：
 
 ```bash
-python cli.py --help           # 子命令总览
-python cli.py <命令> --help     # 查看某子命令的参数
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-### generate —— 解密存档并生成地图
+所有命令默认加载 `.env`，并接受 `--env /path/to/file`。`--root` 可放在子命令后的任意位置。
+
+### `inspect`
 
 ```bash
-python cli.py generate <mysekai_bin>
+bin/mysekaimapper inspect --input mysekai.bin
 ```
 
-- `<mysekai_bin>`：加密存档路径（.bin），必填
-- 流程：AES-128-CBC 解密 → msgpack 解析 → 提取掉落坐标 → 绘制 4 张地图（`site_5.png` ~ `site_8.png`）→ 写出 `rare_resources.txt`
-- 输出到 `data/latest/`，结束时打印实际路径
-- 前置要求：`.env` 已配置 `AES_KEY` / `AES_IV`；存档中没有任何掉落点时会报错退出
+解密并解析存档，输出安全的聚合 JSON 摘要，不写入地图。
 
-### notify —— 推送地图与统计
+### `generate`
 
 ```bash
-python cli.py notify <output_dir> [task_id]
+bin/mysekaimapper generate \
+  --input mysekai.bin \
+  --output data/latest
 ```
 
-- `<output_dir>`：包含 `site_*.png` 与 `rare_resources.txt` 的目录（通常就是 `data/latest/`）
-- `[task_id]`：可选，上传任务 ID，默认 `unknown`。用于从 `data/raw_mysekai/` 反查玩家 ID：优先匹配 `mysekai_<玩家ID>_<task_id>.bin`，匹配不到时取 raw_mysekai 里最新的存档
-- 推送到 Telegram 还是 Bark 由 `config/push_map.json` 路由（未配置的玩家默认走 Telegram），详见「玩家推送路由」
+解密存档、提取掉落点，并写入 `site_*.png` 和 `rare_resources.txt`。`--output` 默认使用 `data/latest`；`--assets` 可覆盖资源目录。
 
-### server —— 启动上传服务（分片上传 + Reqable 上报服务器）
+### `notify`
 
 ```bash
-python cli.py server [--host 0.0.0.0] [--port 9478]
+bin/mysekaimapper notify \
+  --output data/latest \
+  --task-id manual-001 \
+  --player-id 1234567890123456789 \
+  --image-base https://maps.example.com/latest
 ```
 
-- 启动 FastAPI 服务：客户端向 `POST /uploadMySekai` 上传加密存档（单片或分片；接口细节见「上传接口」）；Reqable 也可把 HAR 会话上报到内置上报端点（见上文「Reqable 上报服务器」章节）
-- 全部片到达后自动完成：合并存档 → 生成地图 → 归档到 `data/archive/by-id/<user_id>/<时间戳>/` → 按玩家路由推送通知，无需人工介入
-- 默认监听 `9478` 端口；公网部署时建议通过反向代理暴露为 HTTPS，客户端脚本中写死的上传 URL（含端口）需与你的实际部署保持一致
+`--output` 必填。`--task-id` 和 `--player-id` 默认值为 `unknown`；需要玩家专属路由时，请传入实际玩家 ID。
 
-### 典型手动流程
+### `serve`
 
 ```bash
-python cli.py generate mysekai_xxx.bin       # 1. 生成地图到 data/latest/
-python cli.py notify data/latest <task_id>   # 2. 推送（task_id 填上传 ID，如 chfto53c3）
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 ```
+
+启动上传和上报 HTTP 端点，默认监听 `0.0.0.0:9478`。
 
 ## 目录结构
 
+```text
+.
+├── cmd/mysekaimapper/       # CLI 入口
+├── internal/
+│   ├── har/                 # Reqable HAR 解析与解压
+│   ├── mapper/              # AES、MsgPack、资源与渲染
+│   ├── notify/              # Telegram 与 Bark 通知
+│   ├── server/              # 上传与上报 HTTP 端点
+│   └── service/             # 队列、存储与归档流水线
+├── assets/                  # 字体和资源图标
+├── config/                  # 本地路由模板
+│   ├── bark_map.example.json
+│   └── push_map.example.json
+├── data/                    # 被忽略的运行时输出
+│   ├── tmp/                 # 上传暂存
+│   ├── raw_mysekai/         # 加密源存档
+│   ├── archive/             # 按玩家和时间戳保存的历史产物
+│   └── latest/              # 最新生成的产物
+├── docs/                    # VitePress 文档
+├── go.mod / go.sum          # Go 模块定义
+└── .env.example             # 配置模板
 ```
-├── app/                       # 核心包
-│   ├── config.py              # 路径／环境变量／本地配置集中管理
-│   ├── crypto.py              # MySekai 存档 AES-128-CBC 解密
-│   ├── parser.py              # msgpack 解析＋站点坐标旋转（纯函数）
-│   ├── har.py                 # Reqable 上报服务器 HAR 解析与解压（纯函数）
-│   ├── render.py              # 提取掉落点 → matplotlib 绘图＋稀有资源统计
-│   ├── notify.py              # 推送：Telegram 媒体组／Bark，按玩家路由
-│   ├── server.py              # FastAPI 上传服务（分片上传 + Reqable 上报服务器）
-│   └── cli.py                 # 命令行入口
-├── assets/                    # 静态资源（提交到仓库）
-│   ├── resourceId.csv         # 物品 ID → 名称＋图标（base64）
-│   └── NotoSansSC-Regular.ttf # 中文字体（OFL 协议）
-├── config/                    # 本地配置（真实文件不提交，参考 *.example.json）
-│   ├── bark_map.example.json  # Bark 别名 → 设备 key 模板
-│   └── push_map.example.json  # 玩家 ID → 推送方式模板
-├── data/                      # 运行时数据（整个目录 gitignore）
-│   ├── tmp/                   # 分片上传暂存，合并后即清
-│   ├── raw_mysekai/           # 合并后的原始（加密）存档，永久保留
-│   ├── archive/               # 历史成品归档 by-id/<user>/<时间戳>/（Bark 直链即指向此处）
-│   └── latest/                # 最近一次生成的成品
-├── cli.py                     # 统一入口
-├── tests/                     # 单元测试（pytest）
-├── .env.example               # 环境变量模板（复制为 .env 填写）
-└── requirements.txt           # 运行时依赖（精确锁版本）
-```
+
+`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json` 是私密的运行时数据，会被 Git 忽略。
 
 ## 测试
 
 ```bash
-python -m pytest
+go test ./...
+go build -o /tmp/mysekaimapper ./cmd/mysekaimapper
+npm run docs:build
 ```
+
+GitHub Actions 会在 push 和拉取请求时运行 Go 测试套件并构建服务。
+
+## Go 重构说明
+
+当前运行时仅使用 Go。模块采用包含 `cmd/`、`internal/`、`go.mod` 和 `go.sum` 的标准根目录结构；Python 源码、依赖和 CI 已被移除。归档的参考实现仍保留在 [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) 分支和 [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) 标签中。
+
+HTTP 端点、环境变量、输出名称、归档布局和路由文件格式保持兼容。Go 渲染器使用固定画布，因此生成的 PNG 不保证与此前的 Matplotlib 输出逐像素完全一致。
 
 ## 免责声明
 
-本工具仅用于个人学习与娱乐，请勿用于任何商业用途或违反游戏服务条款的行为。游戏数据与美术资源版权归原版权方所有。
+本工具仅供个人学习和娱乐使用。请勿将其用于商业目的，或以任何违反游戏服务条款的方式使用。游戏数据和资源归其各自所有者所有。
 
 ## 许可证
 
-本项目代码采用 [MIT License](LICENSE)（版权所有 © 2025 mouse233），可自由使用、修改与再分发，详见 [LICENSE](LICENSE)。
-
-> ⚠️ 许可证仅覆盖本项目代码：`assets/` 中的游戏素材（如 `resourceId.csv` 内的物品图标）与游戏数据版权归 SEGA / Colorful Palette 等原版权方所有，**不在 MIT 授权范围内**，请勿将其用于本工具之外的用途。
+项目代码采用 [MIT](https://github.com/mouse233/MySekaiMapper/blob/feat/go-rewrite/LICENSE) 许可证（Copyright © 2025 mouse233）。`assets/` 下的游戏资源和数据归其各自所有者所有，不包含在本许可证中。

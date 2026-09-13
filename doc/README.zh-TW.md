@@ -1,193 +1,209 @@
 # MySekaiMapper
-🌐 語言: [English](../README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
+
+🌐 **Languages**: [English](../README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md)
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/zh-TW/>
 
-《世界計畫 繽紛舞台！feat. 初音未來》（Project Sekai）MySekai（我的世界）採集點地圖產生工具。
+這是一項 Go 服務，可將已加密的 *Project SEKAI* MySekai 存檔轉換為資源採集地圖，並將結果傳送至 Telegram 或 Bark（Day.app）。
 
-**專案初衷**：搭配 MitM 模組或 Reqable 的「上報伺服器」功能使用——抓封包工具擷取遊戲內 MySekai 資料封包後，自動上傳到本服務（一次 POST 即可，分片上傳亦受支援）；伺服器端解密加密存檔、擷取各站點的資源掉落座標，繪製採集地圖，再把結果（含稀有資源統計）推播到玩家的 Telegram / Bark（iOS Day.app），全程無需人工介入。
+它可搭配 MitM 擷取用戶端或 Reqable 的 **Report Server** 使用：擷取工具上傳 MySekai 存檔後，服務會解密並解析內容、繪製地圖與稀有資源摘要、封存產物，並自動發送通知，無須手動處理。
 
-一次任務會產生 **4 張地圖**：`site_5.png`（初始空地）、`site_6.png`（心願沙灘）、`site_7.png`（爛漫花田）、`site_8.png`（忘卻之所），外加一份 `rare_resources.txt` 稀有資源統計。
+一般的 MySekai 區域會產生 `site_5.png`（草原）、`site_6.png`（海灘）、`site_7.png`（花園）、`site_8.png`（紀念場所）及 `rare_resources.txt`。渲染器與通知程式亦能處理其他一般的 `site_*.png` 輸出。
 
-本專案已在朝夕光年（Nuverse）營運的 CN 服 / TW 服中測試通過，其他伺服器可用性未知。
+此擷取流程已在 Nuverse 營運的 CN 與 TW 伺服器上驗證。其他地區是否可用，取決於其 API 路徑與存檔格式。
 
-## 工作流程
+## 運作方式
 
+```text
+Game API response → MitM module / Reqable Report Server
+    │  ① POST /uploadMySekai (single upload or ordered chunks)
+    │  ② POST /reqable/report (HAR, optionally gzip / br / zstd)
+    ▼
+mysekaimapper serve
+    ├─ AES-128-CBC decrypt + MsgPack parse + coordinate normalization
+    ├─ render site_*.png + rare_resources.txt
+    ├─ archive data/archive/by-id/<player_id>/<timestamp>/
+    └─ publish data/latest/ and notify
+         ├─ Telegram: upload local images as multipart media groups
+         └─ Bark: send image URLs from a public static-file server
 ```
-遊戲 API 回應 → MitM 模組 / Reqable 上報伺服器（抓封包擷取 mysekai 資料）
-   │  ① 自動上傳（一次 POST，分片亦支援）→ server.py 自動處理
-   │  ② 或手動放置 .bin 存檔 → cli.py generate
-   ▼
-parser.py    AES-128-CBC 解密 + msgpack 解析 + 座標旋轉
-   ▼
-render.py    繪製 site_5.png ~ site_8.png + rare_resources.txt → data/latest/
-   ▼
-notify.py    推播：
-             ├─ Telegram  ：圖片 multipart 直傳，無需公開網路直連 ← 預設管道
-             └─ Bark      ：以 image= URL 直連通知，需靜態檔案伺服器
-```
 
-## 快速上手
+## 快速開始
 
-先完成安裝與 `.env` 基礎設定，再依你想要的推播方式選擇路徑：
+請選擇符合您環境的通知方式：
 
-- **路徑 A（僅 Telegram Bot 推播）**：設定最少，建議先跑通這條；
-- **路徑 B（啟用 Bark 推播）**：在路徑 A 的基礎上，需要額外設定 Bark key、玩家路由與靜態檔案伺服器。
+- **路徑 A — 僅使用 Telegram**：最簡單的選項；不需要玩家路由檔或公開圖片伺服器。
+- **路徑 B — 啟用 Bark**：設定 Bark 金鑰、玩家路由與用於圖片的公開靜態檔案伺服器。
 
-### 1. 安裝
+### 1. 需求與建置
+
+需要 Go **1.25 或更新版本**。
 
 ```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# 可選:安裝 mysekai 命令(等同於 python cli.py ...)
-venv/bin/pip install -e .
-```
-
-### 2. 設定 .env（必填項目）
-
-```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV` 為 MySekai 存檔的 AES-128-CBC 解密金鑰（各 16 位元組），無論走哪條路徑都必須填寫。其餘變數依選擇的路徑設定：
+`.env` 中的 `AES_KEY` 與 `AES_IV` 必須是 16 位元組的 AES-128-CBC 值。請勿提交 `.env` 或本機路由檔。
 
-| 變數 | 必填 | 說明 |
+### 2. 設定 `.env`
+
+| 變數 | 必要性 | 說明 |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | MySekai 存檔的 AES-128-CBC 金鑰，各 16 位元組 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 選* | Telegram 推播（預設管道）需要，來自 [@BotFather](https://t.me/BotFather) |
-| `BARK_ICON` | 選 | Bark 通知圖示 URL |
-| `BARK_IMAGE_BASE` | 選 | 靜態檔案伺服器根位址（推播 Bark 圖片直連用，見下文） |
-| `FALLBACK_IMAGE_BASE` | 選 | 未設定 `BARK_IMAGE_BASE` 時的圖片直連備用位址 |
+| `AES_KEY`, `AES_IV` | 是 | 16 位元組的 MySekai AES-128-CBC 金鑰與 IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 僅 Telegram | 來自 [@BotFather](https://t.me/BotFather) 的 Bot 憑證與目標聊天 ID |
+| `BARK_ICON` | 選用 | 隨 Bark 通知附帶的圖示 URL |
+| `BARK_IMAGE_BASE` | Bark 圖片 | 已封存地圖圖片的公開基底 URL |
+| `FALLBACK_IMAGE_BASE` | 選用 | 未設定 `BARK_IMAGE_BASE` 時的圖片基底備援值 |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 選用 | Reqable 報告端點設定 |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 選用 | 覆寫儲存庫預設目錄 |
 
-> \* 若只想用 Bark 收通知：可留空 Telegram 設定，但**必須在 `config/push_map.json` 裡把玩家路由到 Bark 別名**，否則未設定的玩家預設走 Telegram，而 Telegram 缺設定時只會印出一行警告並跳過，結果是什麼都不推。
+### 3. 路徑 A — 僅使用 Telegram
 
-### 3. 路徑 A：僅 Telegram Bot 推播（最簡）
+1. 在 `.env` 中設定 Telegram 變數：
 
-適用場景：只要在 Telegram 收到地圖與統計，不折騰其他元件。
+    ```dotenv
+    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
+    TELEGRAM_CHAT_ID=123456789
+    ```
 
-1. 在 `.env` 中填寫 Telegram 設定（來自 [@BotFather](https://t.me/BotFather)）：
+2. 可選：使用既有的加密存檔驗證解析與通知：
 
-   ```
-   TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
-   TELEGRAM_CHAT_ID=123456789
-   ```
+    ```bash
+    bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+    bin/mysekaimapper notify \
+      --output data/latest \
+      --task-id manual-001 \
+      --player-id 1234567890123456789
+    ```
 
-2. 手動跑一遍驗證：
+3. 啟動服務以進行一般操作：
 
-   ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
-   ```
+    ```bash
+    bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+    ```
 
-3. 日常使用：啟動上傳服務，存檔送達後自動產生地圖並推播。兩種抓封包方式任選：
+未出現在 `config/push_map.json` 中的玩家預設會使用 Telegram。路徑 A 不需要 Bark 對應檔、推送對應檔或公開圖片伺服器。
 
-   - **MitM 模組**：按「上傳介面」上傳存檔
-   - **Reqable 上報伺服器**：設定匹配規則與上報路徑（見下文「Reqable 上報伺服器」章節）
+### 4. 路徑 B — 啟用 Bark
 
-   ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
-   ```
+除路徑 A 的設定外（僅使用 Bark 的路由可省略 Telegram）：
 
-路徑 A **不需要**：`config/push_map.json`、`config/bark_map.json`、靜態檔案伺服器、`BARK_IMAGE_BASE`。未設定的玩家預設就推播到 Telegram。
+1. 由 `config/bark_map.example.json` 建立 `config/bark_map.json`，將每個 Bark 別名對應至裝置金鑰。
+2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 Bark 別名、`telegram`、`none`，或它們的組合：
 
-### 4. 路徑 B：啟用 Bark 推播（需額外設定）
+    ```json
+    {
+      "1234567890123456789": ["klee"],
+      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456791": "none"
+    }
+    ```
 
-在路徑 A 的基礎上（Telegram 設定可保留，也可留空只推 Bark），依順序補齊：
+3. 透過公開 HTTP(S) 靜態檔案伺服器公開儲存庫的 `data/` 目錄，並將其公開根 URL 設為 `BARK_IMAGE_BASE`：
 
-1. **設定 Bark key**：在 `config/bark_map.json` 中為每個別名設定裝置 key（範本見同目錄 `bark_map.example.json`）。
-2. **設定玩家路由**：在 `config/push_map.json` 中把玩家 ID 路由到 Bark 別名，例如：
+    ```dotenv
+    BARK_IMAGE_BASE=https://maps.example.com
+    ```
 
-   ```json
-   {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
-   }
-   ```
+未設定的玩家預設會使用 Telegram。因此若未設定 Telegram，未設定的玩家將不會收到通知；僅使用 Bark 時，請明確指定 Bark 別名。
 
-   ⚠️ **必須設定**：未設定的玩家預設走 Telegram；若此時 Telegram 又未設定，只會印出警告並跳過，結果什麼都不推。
-3. **架設靜態檔案伺服器**：把專案的 `data/` 目錄暴露為公開網路可達的 HTTP(S) 服務，並在 `.env` 設定 `BARK_IMAGE_BASE=https://<域名或IP:端口>`。否則 Bark 通知不帶地圖圖片（詳見下文「架設靜態檔案伺服器」）。
-4. 驗證與日常使用同路徑 A（第 2、3 步）。
+## 執行服務
 
-## 上傳介面
+```bash
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+```
 
-用戶端把擷取的 mysekai 回應主體透過 `POST /uploadMySekai` 上傳（一次 POST 即可；分片上傳僅作相容保留）。手動用 curl 依同一協定除錯亦可。header 如下：
+伺服器會印出就緒 URL，並為上傳／報告接受、佇列處理、解析、渲染、封存、通知、耗時、工作 ID 與 `player_id` 寫入生命週期日誌。它刻意不會記錄封存內容、密鑰、權杖或完整的通知 URL。
 
-| Header | 說明 |
-| --- | --- |
-| `X-Upload-Id` | 上傳任務 ID（僅字母數字與 `-` / `_`，長度 1~64），必填 |
-| `X-Chunk-Index` | 分片序號，從 0 開始（單片上傳恆為 0），必填 |
-| `X-Total-Chunks` | 總分片數（1~10；單片上傳填 1），必填 |
-| `X-Original-Url` | 用戶端原始頁面 URL，用於解析玩家 ID（如 `https://.../user/123456...`）；**選填**，缺失時玩家 ID 記為 `unknown` |
-| `X-Script-Version` | 用戶端腳本版本號；伺服器端忽略該 header，可不傳 |
+程序會處理 `SIGINT` 與 `SIGTERM`：先停止接受 HTTP 請求，接著最多等待 15 秒，以排空已接受的工作。
 
-請求主體為原始二進位存檔資料（無需 multipart）。
+已編譯的二進位檔可在專案工作區外透過 `--root /path/to/MySekaiMapper` 執行；否則會從工作目錄尋找儲存庫根目錄。
 
-限制：
+## 上傳 API
 
-- 單一檔案總大小 ≤1MB（`MAX_TOTAL_SIZE`）
-- 單一分片 ≤1MB（`MAX_CHUNK_SIZE`，超出限制回傳 413）
-- 總分片數 ≤10（`MAX_CHUNKS`）
+`POST /uploadMySekai` 可直接接受已加密的 MySekai 回應主體。通常單次上傳即可；為相容擷取用戶端，仍支援依序傳送的分塊。
 
-> 注意：目前存檔約 200KB，**一次 POST 即可傳完**。分片上傳僅為相容舊抓封包用戶端保留；若使用分片，每片應明顯小於 1MB（例如 256KB），10 片可傳滿 1MB 上限。
+| 標頭 | 必要性 | 說明 |
+| --- | --- | --- |
+| `X-Upload-Id` | 是 | 符合 `^[A-Za-z0-9_-]{1,64}$` 的工作識別碼 |
+| `X-Chunk-Index` | 是 | 從零開始的分塊索引 |
+| `X-Total-Chunks` | 是 | 分塊總數，範圍從 1 到 10 |
+| `X-Original-Url` | 否 | 原始遊戲 URL；`/user/<id>` 可提供玩家路由資訊 |
+| `X-Script-Version` | 否 | 為相容擷取用戶端而接受，服務會忽略此值 |
 
-回應：
+加密封存檔、每個分塊與合併後的上傳皆限制為 1 MiB。成功接受的請求會回傳純文字 `OK`；渲染與通知則在背景繼續執行。
 
-| 狀態碼 | 含義 |
-| --- | --- |
-| `200` | 存檔已接收，回傳 `OK`；伺服器端自動完成：合併存檔（如分片）→ 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 推播通知，全程無需人工介入 |
-| `400` | 參數不合法（upload id 格式錯誤、分片序號超出範圍、總分片數不在 1~10） |
-| `413` | 超過大小限制（單分片超 1MB，或累計總大小超 1MB） |
-
-### curl 範例
-
-單次 POST（目前存檔一次即可傳完）：
+### 單次上傳範例
 
 ```bash
 curl -X POST http://127.0.0.1:9478/uploadMySekai \
-  -H "X-Upload-Id: demo12345" \
-  -H "X-Chunk-Index: 0" \
-  -H "X-Total-Chunks: 1" \
-  -H "X-Original-Url: https://example.com/user/1234567890123456789" \
+  -H 'X-Upload-Id: demo12345' \
+  -H 'X-Chunk-Index: 0' \
+  -H 'X-Total-Chunks: 1' \
+  -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
   --data-binary @mysekai.bin
 ```
 
-## Reqable 上報伺服器
+### 分塊上傳範例
 
-不依賴自訂抓封包用戶端，也可以直接用 Reqable 內建的「上報伺服器」功能（Reqable v2.20.0+）：它會把每個已捕獲的 HTTP 工作階段依 [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) JSON 格式自動 POST 到你的伺服器，可選 gzip / brotli / zstd 壓縮。上報端點**預設開啟**，與分片上傳共存——`python cli.py server` 同時提供兩個介面；設 `REPORT_ENABLED=0` 可關閉：
+請使用相同的 `X-Upload-Id`、依序的索引，且最多十個分塊：
 
 ```bash
-python cli.py server
+file=mysekai.bin
+id=$(openssl rand -hex 5)
+split -b 262144 -a 2 -d "$file" /tmp/ms_chunk_
+total=$(ls /tmp/ms_chunk_* | wc -l | tr -d ' ')
+
+i=0
+for chunk in /tmp/ms_chunk_*; do
+  curl -s -X POST http://127.0.0.1:9478/uploadMySekai \
+    -H "X-Upload-Id: $id" \
+    -H "X-Chunk-Index: $i" \
+    -H "X-Total-Chunks: $total" \
+    -H 'X-Original-Url: https://example.com/user/1234567890123456789' \
+    --data-binary @"$chunk"
+  echo
+  i=$((i + 1))
+done
+rm -f /tmp/ms_chunk_*
 ```
 
-設定（`.env`）：
+常見回應包括：已接受上傳時的 `200 OK`、識別碼或分塊範圍無效時的 `400 Bad Request`、超過大小限制時的 `413 Payload Too Large`，以及缺少必要上傳標頭或其值非整數時的 `422 Unprocessable Entity`。
+
+## Reqable Report Server
+
+Reqable v2.20.0+ 可將每個擷取到的 HTTP 工作階段以 HAR JSON POST 至此服務。報告端點預設啟用，並可與 `/uploadMySekai` 共存。
+
+```bash
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
+```
 
 | 變數 | 預設值 | 說明 |
 | --- | --- | --- |
-| `REPORT_ENABLED` | `1`（開啟） | 設 `0` / `false` 關閉上報端點 |
-| `REPORT_PATH` | `/reqable/report` | 端點路徑，填入 Reqable 的「上報路徑」 |
-| `REPORT_MAX_SIZE` | `1` | HAR 請求主體大小上限（MB，預設 1，與分片上傳上限一致） |
-| `REPORT_TOKEN` | （空） | 選用共享令牌；設定後端點要求請求頭 `X-Report-Token` 匹配 |
+| `REPORT_ENABLED` | `1` | 設為 `0`、`false`、`no` 或 `off` 可停用報告 |
+| `REPORT_PATH` | `/reqable/report` | 在 Reqable 中設定的端點路徑 |
+| `REPORT_MAX_SIZE` | `1` | HAR 內容解壓縮後的大小上限，單位為 MiB |
+| `REPORT_TOKEN` | 空白 | 可選值；若設定，則要求 `X-Report-Token` 中包含該值 |
 
-每次上報，主機端會：
+### 處理流程
 
-1. 依 `Content-Encoding`（gzip / br / zstd）解壓並解析 HAR。
-2. 遍歷 `log.entries`，取第一個「回應主體（兜底：請求主體）能用 `AES_KEY` / `AES_IV` 解密並解析為 MySekai 存檔」的工作階段——命中規則但與存檔無關的流量會被跳過。
-3. 從工作階段 URL 解析玩家 ID（`/user/<id>`，與 `X-Original-Url` 同規則）。
-4. 存檔儲存到 `data/raw_mysekai/`，並啟動與分片上傳相同的 生成 → 歸檔 → 推播 流水線。
+對於每份報告，服務會：
 
-注意：
+1. 解壓縮 `identity`、`gzip`、`br`、`zstd` 或 `zstandard` 內容並剖析 HAR。支援不含內容大小欄位的串流 zstd frame。
+2. 遍歷 `log.entries`，接受第一個可使用 `AES_KEY`/`AES_IV` 解密且通過 MySekai 封存檔驗證的回應主體（若無，則退回使用請求主體）。
+3. 從相符工作階段 URL 中的 `/user/<id>` 擷取 `player_id`。
+4. 將加密封存檔儲存至 `data/raw_mysekai/`，並啟動與上傳所使用的相同 render → archive → notify 管線。
 
-- Reqable 每個工作階段**只上報 1 次且失敗不重試**，因此端點會盡快回傳 `200`。請保持服務穩定，並留意 `[REPORT]` 日誌。
-- 每次上報只處理 **1 份**存檔（第一個有效條目），因此匹配多個介面的規則不會造成重複推播。
-- 安全性：協定本身沒有鑑權。Reqable 無法附加自訂請求頭，建議把隨機字串拼進 `REPORT_PATH`（如 `/reqable/report/9f3a…`），或用反向代理 / 防火牆限制存取，而不是依賴 `REPORT_TOKEN`。
+> Reqable 只會為每個工作階段報告一次，且不會重試。請保持服務可用，並留意 `[REPORT]` 記錄。即使語法有效的 HAR 不含 MySekai 封存檔，仍會收到 `ok`；每份報告只會處理第一個有效封存檔。
 
-Reqable 側設定範例：
+### 設定 Reqable
 
-- URL 匹配規則：`https://<遊戲API網域>/api/user/*/mysekai*`
-- 上報路徑：`http://<你的伺服器>:9478/reqable/report`
-- 壓縮演算法：gzip / brotli / zstd 皆可（主機端三種都支援）
-
-五個伺服器的遊戲 API 網域：
+- **比對規則**：`https://<game-api-domain>/api/user/*/mysekai*`
+- **伺服器 URL**：`http://<your-server>:9478/reqable/report`（或您自訂的 `REPORT_PATH`）
 
 | 伺服器 | 遊戲 API 網域 |
 | --- | --- |
@@ -197,197 +213,172 @@ Reqable 側設定範例：
 | KR | `https://mkkorea-obt-prod01-cdn.bytedgame.com` |
 | CN | `https://mkcn-prod-public-60001-1.dailygn.com` |
 
-推薦匹配規則：`https://<網域>/api/user/*/mysekai*`（CN 已實測驗證）。若你所在伺服器的 mysekai 介面路徑不同，請依實際路徑調整規則。
+此比對模式已針對 CN 驗證。若您的地區使用其他 MySekai API 路徑，請檢查其擷取到的 URL 並調整規則。
 
-手動 curl 驗證（gzip 壓縮的 HAR）：
+### 安全性
+
+Reqable 無法新增自訂的 `X-Report-Token` 標頭。請使用較長的隨機 `REPORT_PATH`，例如 `/reqable/report/<random>`，並透過反向代理或防火牆限制存取；未採取控管措施時，請勿將預設端點公開至網際網路。
+
+### 手動 gzip HAR 測試
 
 ```bash
 gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
-  -H "Content-Type: application/json" -H "Content-Encoding: gzip" \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Encoding: gzip' \
   --data-binary @-
 ```
 
-## 推播機制
+## 通知與靜態檔案
 
-### 預設走 Telegram Bot
+從 `config/push_map.example.json`、`config/bark_map.example.json` 建立本地設定。這些檔案包含玩家／裝置識別資訊，已被 Git 忽略。
 
-- 未在 `config/push_map.json` 中設定的玩家，**一律預設推播到 Telegram**；`push_map.json` 檔案缺失時同樣預設 Telegram。
-- Telegram 使用 Bot API `sendMediaGroup`，把 4 張本地 PNG 作為 multipart 直接上傳，**不需要公開網路直連，也不依賴靜態檔案伺服器**；`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 缺失時只印出警告並跳過，不影響 Bark 管道。
+### 玩家路由
 
-### Bark 推播依賴公開直連
+`config/push_map.json` 將玩家 ID 對映至 `telegram`、Bark 別名、`none`、`+tg` 字串或方法陣列：
 
-Bark（Day.app）通知中的圖片是 **URL 直連**：`notify.py` 把圖片位址編碼進 `image=` 參數發給 `api.day.app`，由 Bark 伺服器再去抓取這張圖。因此該 URL 必須**公開網路可達（建議 HTTPS）**，否則 Bark 通知裡沒有圖片。
-
-4 張地圖的直連由 `notify.py` 依以下優先順序拼出：
-
-```python
-base = image_base or BARK_IMAGE_BASE or FALLBACK_IMAGE_BASE
-image_url = base.rstrip("/") + f"/site_{i}.png"   # i = 5..8
+```json
+{
+  "1234567890123456789": ["telegram"],
+  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456791": "none"
+}
 ```
 
-| 場景 | base 取值 | 圖片直連形態 |
-| --- | --- | --- |
-| 伺服器流程（推薦） | `BARK_IMAGE_BASE` + `/archive/by-id/<user_id>/<時間戳>` | `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<時間戳>/site_{5..8}.png` |
-| 手動 CLI 推播 | `BARK_IMAGE_BASE` 或 `FALLBACK_IMAGE_BASE` | `<base>/site_{5..8}.png`（需把 `data/latest/` 暴露在 `<base>/` 下） |
+沒有可用路由值的玩家預設使用 Telegram。
 
-> 注意：伺服器流程只有在設定了 `BARK_IMAGE_BASE` 時才會拼出帶歸檔路徑的直連；若只設了 `FALLBACK_IMAGE_BASE`，伺服器推播的直連同樣是 `<FALLBACK_IMAGE_BASE>/site_{5..8}.png`。
+### Telegram
 
-## 靜態檔案伺服器範例（選填）
+Telegram 會將所有產生的常規 `site_*.png` 以本地 multipart 媒體群組的形式上傳。它需要 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`，但不需要公開圖片伺服器。Telegram 失敗不會阻止已設定的 Bark 嘗試。
 
-目的：把 `data/archive/` 目錄暴露成公開 URL，讓 Bark 伺服器能抓到四張地圖。
+### Bark
 
-**建議做法**：靜態伺服器的根目錄指向專案的 `data/`，再設定 `BARK_IMAGE_BASE=https://<你的域名或IP:端口>`，即可自動映射：
+Bark 會傳送稀有資源摘要，並針對所有產生的常規 `site_*.png` 分別發送通知。`config/bark_map.json` 負責別名與裝置金鑰的對映：
 
-```
-data/archive/by-id/<user_id>/<時間戳>/site_5.png
-  →  https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<時間戳>/site_5.png
+```json
+{ "klee": "paste-your-bark-key-here" }
 ```
 
-常用範例：
+Bark 會自行擷取圖片 URL。自動服務工作應將 `BARK_IMAGE_BASE` 指向公開的 `data/` 根目錄，歸檔 URL 如下：
 
-Python 內建（最簡，適合內網/測試）：
-
-```bash
-python -m http.server 8000 --directory data
-# 然後設定 BARK_IMAGE_BASE=http://<伺服器IP>:8000
+```text
+https://maps.example.com/archive/by-id/<player_id>/<timestamp>/site_5.png
 ```
 
-nginx：
+手動 `notify` 的圖片根路徑優先順序為 `--image-base`、`BARK_IMAGE_BASE`、`FALLBACK_IMAGE_BASE`；該根路徑應直接公開所選的輸出目錄。
+
+### 靜態檔案伺服器
+
+Bark 圖片不可使用 `localhost` 或 `127.0.0.1`。請使用公開的 HTTPS，例如：
 
 ```nginx
 server {
     listen 443 ssl;
     server_name maps.example.com;
-    # ... ssl 憑證設定 ...
     root /path/to/MySekaiMapper/data;
 }
 ```
-
-Caddy（自動 HTTPS）：
 
 ```bash
 caddy file-server --root /path/to/MySekaiMapper/data --listen :443
 ```
 
-注意事項：
+通知器會忽略輸出目錄中的符號連結，不會記錄憑據或完整的通知 URL。
 
-- **不要用 `127.0.0.1` / `localhost`** 作為直連位址；Bark 伺服器需要能存取該位址，一般直接選公開網路可達的位址，內網 IP 僅在確認互通時使用。
-- **只用 Telegram 則完全不需要靜態伺服器**，跳過本節即可。
-- 手動 `cli.py notify` 的直連不帶歸檔路徑，需要另把 `data/latest/` 暴露在 `BARK_IMAGE_BASE` 下；或用 `FALLBACK_IMAGE_BASE` 指向輸出目錄（例如 `FALLBACK_IMAGE_BASE=http://<host>:5500/output` → 該伺服器把 `data/latest/` 掛在 `/output` 下）。
+## 命令列參考
 
-## 玩家推播路由（選填）
-
-在 `config/` 下依需求建立本地設定（格式見同目錄 `*.example.json`，已被 `.gitignore` 忽略）：
-
-- `push_map.json` — 玩家 ID → 推播方式：值為 `"telegram"`、Bark 別名、`"none"`（不推播），也支援組合寫法 `["alias", "telegram"]` 或 `"alias+tg"`。**未設定的玩家預設 `telegram`**。
-
-  ```json
-  {
-    "1234567890123456789": ["telegram"],
-    "1234567890123456790": ["telegram", "klee"]
-  }
-  ```
-
-- `bark_map.json` — Bark 別名 → 裝置 key：
-
-  ```json
-  { "klee": "paste-your-bark-key-here" }
-  ```
-
-## 常見問題
-
-- **Bark 通知收不到圖片？** 檢查直連是否公開網路可達：在瀏覽器/手機網路下直接開啟 `https://<BARK_IMAGE_BASE>/archive/by-id/<user_id>/<時間戳>/site_5.png` 應能顯示圖片；內網位址、`127.0.0.1`、或憑證異常的 HTTPS 都會導致抓圖失敗。
-- **什麼都沒推播？** 檢查 `push_map.json` 是否把該玩家設成了 `"none"`；只配了 Bark 的使用者是否忘了在該玩家上設定 Bark 別名（未設定的玩家預設走 Telegram）；Telegram 管道是否配了 token 與 chat id；Bark 管道是否缺 key（報 `[BARK] ... failed` 日誌）。
-- **不想收到 Bark 只想要 Telegram？** 什麼都不用做——未設定的玩家預設就走 Telegram。
-
-## 命令列工具（cli.py）
-
-所有功能都可透過 `cli.py` 驅動；安裝後（`pip install -e .`）也可用等價的 `mysekai` 命令。命令成功退出碼為 0，出錯為 1（錯誤資訊印到 stderr）。
+先建置一次二進位檔：
 
 ```bash
-python cli.py --help           # 子命令總覽
-python cli.py <命令> --help     # 查看某子命令的參數
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-### generate —— 解密存檔並產生地圖
+所有指令預設都會載入 `.env`，並接受 `--env /path/to/file`。`--root` 可放在子指令之後的任意位置。
+
+### `inspect`
 
 ```bash
-python cli.py generate <mysekai_bin>
+bin/mysekaimapper inspect --input mysekai.bin
 ```
 
-- `<mysekai_bin>`：加密存檔路徑（.bin），必填
-- 流程：AES-128-CBC 解密 → msgpack 解析 → 擷取掉落座標 → 繪製 4 張地圖（`site_5.png` ~ `site_8.png`）→ 寫出 `rare_resources.txt`
-- 輸出到 `data/latest/`，結束時印出實際路徑
-- 前置要求：`.env` 已設定 `AES_KEY` / `AES_IV`；存檔中沒有任何掉落點時會報錯退出
+解密並解析存檔，接著輸出安全的彙總 JSON 摘要，不會寫入地圖。
 
-### notify —— 推播地圖與統計
+### `generate`
 
 ```bash
-python cli.py notify <output_dir> [task_id]
+bin/mysekaimapper generate \
+  --input mysekai.bin \
+  --output data/latest
 ```
 
-- `<output_dir>`：包含 `site_*.png` 與 `rare_resources.txt` 的目錄（通常就是 `data/latest/`）
-- `[task_id]`：選填，上傳任務 ID，預設 `unknown`。用於從 `data/raw_mysekai/` 反查玩家 ID：優先比對 `mysekai_<玩家ID>_<task_id>.bin`，比對不到時取 raw_mysekai 裡最新的存檔
-- 推播到 Telegram 還是 Bark 由 `config/push_map.json` 路由（未設定的玩家預設走 Telegram），詳見「玩家推播路由」
+解密封存檔、擷取掉落物，並寫入 `site_*.png` 與 `rare_resources.txt`。`--output` 預設為 `data/latest`；可用 `--assets` 覆寫素材目錄。
 
-### server —— 啟動上傳服務（分片上傳 + Reqable 上報伺服器）
+### `notify`
 
 ```bash
-python cli.py server [--host 0.0.0.0] [--port 9478]
+bin/mysekaimapper notify \
+  --output data/latest \
+  --task-id manual-001 \
+  --player-id 1234567890123456789 \
+  --image-base https://maps.example.com/latest
 ```
 
-- 啟動 FastAPI 服務：用戶端向 `POST /uploadMySekai` 上傳加密存檔（單片或分片；介面細節見「上傳介面」）；Reqable 也可把 HAR 工作階段上報到內建上報端點（見上文「Reqable 上報伺服器」章節）
-- 全部片到達後自動完成：合併存檔 → 產生地圖 → 歸檔到 `data/archive/by-id/<user_id>/<時間戳>/` → 依玩家路由推播通知，無需人工介入
-- 預設監聽 `9478` 連接埠；公開網路部署時建議透過反向代理暴露為 HTTPS，用戶端腳本中寫死的上傳 URL（含連接埠）需與你的實際部署保持一致
+必須提供 `--output`。`--task-id` 與 `--player-id` 預設為 `unknown`；需要依玩家進行路由時，請傳入實際的玩家 ID。
 
-### 典型手動流程
+### `serve`
 
 ```bash
-python cli.py generate mysekai_xxx.bin       # 1. 產生地圖到 data/latest/
-python cli.py notify data/latest <task_id>   # 2. 推播（task_id 填上傳 ID，如 chfto53c3）
+bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 ```
+
+啟動上傳與報告 HTTP 端點。預設位址為 `0.0.0.0:9478`。
 
 ## 目錄結構
 
+```text
+.
+├── cmd/mysekaimapper/       # CLI 進入點
+├── internal/
+│   ├── har/                 # Reqable HAR 解析與解壓縮
+│   ├── mapper/              # AES、MsgPack、資源與渲染
+│   ├── notify/              # Telegram 與 Bark 傳送
+│   ├── server/              # 上傳與報告 HTTP 端點
+│   └── service/             # 佇列、儲存與封存管線
+├── assets/                  # 字型與資源圖示
+├── config/                  # 本機路由範本
+│   ├── bark_map.example.json
+│   └── push_map.example.json
+├── data/                    # 忽略的執行階段資料
+│   ├── tmp/                 # 上傳暫存區
+│   ├── raw_mysekai/         # 加密來源封存檔
+│   ├── archive/             # 依玩家與時間戳記保存的歷史產物
+│   └── latest/              # 最新產生的產物
+├── docs/                    # VitePress 文件
+├── go.mod / go.sum          # Go 模組定義
+└── .env.example             # 設定範本
 ```
-├── app/                       # 核心套件
-│   ├── config.py              # 路徑／環境變數／本地設定集中管理
-│   ├── crypto.py              # MySekai 存檔 AES-128-CBC 解密
-│   ├── parser.py              # msgpack 解析＋站點座標旋轉（純函式）
-│   ├── har.py                 # Reqable 上報伺服器 HAR 解析與解壓（純函式）
-│   ├── render.py              # 擷取掉落點 → matplotlib 繪圖＋稀有資源統計
-│   ├── notify.py              # 推播：Telegram 媒體群組／Bark，依玩家路由
-│   ├── server.py              # FastAPI 上傳服務（分片上傳 + Reqable 上報伺服器）
-│   └── cli.py                 # 命令列入口
-├── assets/                    # 靜態資源（提交到儲存庫）
-│   ├── resourceId.csv         # 物品 ID → 名稱＋圖示（base64）
-│   └── NotoSansSC-Regular.ttf # 中文字型（OFL 授權）
-├── config/                    # 本地設定（真實檔案不提交，參考 *.example.json）
-│   ├── bark_map.example.json  # Bark 別名 → 裝置 key 範本
-│   └── push_map.example.json  # 玩家 ID → 推播方式範本
-├── data/                      # 執行時期資料（整個目錄 gitignore）
-│   ├── tmp/                   # 分片上傳暫存，合併後即清
-│   ├── raw_mysekai/           # 合併後的原始（加密）存檔，永久保留
-│   ├── archive/               # 歷史成品歸檔 by-id/<user>/<時間戳>/（Bark 直連即指向此處）
-│   └── latest/                # 最近一次產生的成品
-├── cli.py                     # 統一入口
-├── tests/                     # 單元測試（pytest）
-├── .env.example               # 環境變數範本（複製為 .env 填寫）
-└── requirements.txt           # 執行時期依賴（精確鎖定版本）
-```
+
+`data/`、`.env`、`config/bark_map.json` 與 `config/push_map.json` 是私密的執行階段資料，且會被 Git 忽略。
 
 ## 測試
 
 ```bash
-python -m pytest
+go test ./...
+go build -o /tmp/mysekaimapper ./cmd/mysekaimapper
+npm run docs:build
 ```
+
+GitHub Actions 會在推送與提取請求時執行 Go 測試套件與建置。
+
+## Go 重構
+
+目前執行階段僅使用 Go。此模組採用標準根目錄結構，包含 `cmd/`、`internal/`、`go.mod` 與 `go.sum`；Python 原始碼、相依項目與 CI 均已移除。封存的參考實作仍保留在 [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) 分支與 [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) 標籤中。
+
+HTTP 端點、環境變數、輸出名稱、封存配置與路由檔格式皆維持相容。Go 渲染器使用固定畫布，因此產生的 PNG 不保證與先前 Matplotlib 輸出逐像素相同。
 
 ## 免責聲明
 
-本工具僅用於個人學習與娛樂，請勿用於任何商業用途或違反遊戲服務條款的行為。遊戲資料與美術資源版權歸原版權方所有。
+本工具僅供個人學習與娛樂使用。請勿將其用於商業用途，或以違反遊戲服務條款的方式使用。遊戲資料與素材歸各自的權利人所有。
 
 ## 授權條款
 
-本專案程式碼採用 [MIT License](LICENSE)（版權所有 © 2025 mouse233），可自由使用、修改與再散布，詳見 [LICENSE](LICENSE)。
-
-> ⚠️ 授權條款僅涵蓋本專案程式碼：`assets/` 中的遊戲素材（如 `resourceId.csv` 內的物品圖示）與遊戲資料版權歸 SEGA / Colorful Palette 等原版權方所有，**不在 MIT 授權範圍內**，請勿將其用於本工具之外的用途。
+專案程式碼採用 [MIT](https://github.com/mouse233/MySekaiMapper/blob/feat/go-rewrite/LICENSE) 授權（Copyright © 2025 mouse233）。`assets/` 中的遊戲素材與遊戲資料歸各自的權利人所有，且不受本授權條款涵蓋。

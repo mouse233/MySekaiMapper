@@ -1,84 +1,84 @@
-# Quick Start
+<!-- GENERATED from README.md; do not edit directly. -->
 
-First finish the installation and basic `.env` configuration, then pick the path that matches your push setup:
+# Quick start
 
-- **Path A (Telegram Bot only)**: fewest configs, recommended to get running first;
-- **Path B (enable Bark push)**: Path A plus Bark keys, player routing, and a static file server.
+Choose the notification path that fits your setup:
 
-## 1. Install
+- **Path A — Telegram only**: simplest option; no player-routing file or public image server is needed.
+- **Path B — Bark enabled**: configure Bark keys, player routing, and a public static-file server for images.
 
-```bash
-python -m venv venv
-venv/bin/pip install -r requirements.txt
-# Optional: install the mysekai command (equivalent to python cli.py ...)
-venv/bin/pip install -e .
-```
+### 1. Requirements and build
 
-## 2. Configure .env (required)
+Go **1.25 or newer** is required.
 
 ```bash
+go version
 cp .env.example .env
+go test ./...
+mkdir -p bin
+go build -o bin/mysekaimapper ./cmd/mysekaimapper
 ```
 
-`AES_KEY` / `AES_IV` are the AES-128-CBC decryption keys for MySekai saves (16 bytes each) — required on every path. The remaining variables depend on your chosen path:
+`AES_KEY` and `AES_IV` in `.env` are required 16-byte AES-128-CBC values. Do not commit `.env` or local routing files.
+
+### 2. Configure `.env`
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `AES_KEY` / `AES_IV` | ✅ | AES-128-CBC keys for MySekai saves, 16 bytes each |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional* | Needed for Telegram push (default channel); from [@BotFather](https://t.me/BotFather) |
-| `BARK_ICON` | Optional | Icon URL for Bark notifications |
-| `BARK_IMAGE_BASE` | Optional | Root URL of the static file server (for Bark image links; see below) |
-| `FALLBACK_IMAGE_BASE` | Optional | Fallback base URL for image links when `BARK_IMAGE_BASE` is not set |
+| `AES_KEY`, `AES_IV` | Yes | 16-byte MySekai AES-128-CBC key and IV |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram only | Bot credentials and target chat ID from [@BotFather](https://t.me/BotFather) |
+| `BARK_ICON` | Optional | Icon URL included in Bark notifications |
+| `BARK_IMAGE_BASE` | Bark images | Public base URL for archived map images |
+| `FALLBACK_IMAGE_BASE` | Optional | Image-base fallback when `BARK_IMAGE_BASE` is unset |
+| `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | Optional | Reqable report-endpoint settings |
+| `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | Optional | Override the default repository directories |
 
-::: warning
-\* If you only want Bark notifications: you may leave the Telegram config empty, but you **must route the player to a Bark alias in `config/push_map.json`**, otherwise unconfigured players default to Telegram — and with Telegram unconfigured, only a warning is printed and nothing is pushed.
-:::
+### 3. Path A — Telegram only
 
-## 3. Path A: Telegram Bot only (simplest)
+1. Set the Telegram variables in `.env`:
 
-Use when: you just want maps and stats in Telegram without setting up anything else.
-
-1. Fill in the Telegram config in `.env` (from [@BotFather](https://t.me/BotFather)):
-
-   ```
+   ```dotenv
    TELEGRAM_BOT_TOKEN=1234567890:AAAA-your-bot-token
    TELEGRAM_CHAT_ID=123456789
    ```
 
-2. Run it once manually to verify:
+2. Optionally verify parsing and notification with an existing encrypted save:
 
    ```bash
-   python cli.py generate <mysekai.bin>
-   python cli.py notify data/latest <task_id>
+   bin/mysekaimapper generate --input data/raw_mysekai/mysekai.bin
+   bin/mysekaimapper notify \
+     --output data/latest \
+     --task-id manual-001 \
+     --player-id 1234567890123456789
    ```
 
-3. Daily use: start the upload service; saves are turned into maps and pushed automatically. Two capture clients are supported:
-
-   - **MitM module**: uploads the save per the [Upload API](/guide/upload-api)
-   - **Reqable Report Server**: reports captured sessions to the built-in endpoint (see [Reqable Report Server](/guide/report-server))
+3. Start the service for normal operation:
 
    ```bash
-   python cli.py server [--host 0.0.0.0] [--port 9478]
+   bin/mysekaimapper serve --host 0.0.0.0 --port 9478
    ```
 
-Path A does **not** need: `config/push_map.json`, `config/bark_map.json`, a static file server, or `BARK_IMAGE_BASE`. Unconfigured players are pushed to Telegram by default.
+Players absent from `config/push_map.json` default to Telegram. Path A does not require a Bark map, a push map, or a public image server.
 
-## 4. Path B: enable Bark push (extra configuration)
+### 4. Path B — enable Bark
 
-On top of Path A (the Telegram config may stay, or be left empty to push only to Bark), set up in order:
+In addition to the Path A configuration (Telegram may be omitted for Bark-only routes):
 
-1. **Configure Bark keys**: give each alias a device key in `config/bark_map.json` (template: `bark_map.example.json` in the same directory).
-2. **Configure player routing**: route player IDs to Bark aliases in `config/push_map.json`, for example:
+1. Create `config/bark_map.json` from `config/bark_map.example.json`, mapping a Bark alias to each device key.
+2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to a Bark alias, `telegram`, `none`, or a combination:
 
    ```json
    {
      "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"]
+     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456791": "none"
    }
    ```
 
-   ::: warning
-   **Required**: unconfigured players default to Telegram; if Telegram is also unconfigured, only a warning is printed and nothing is pushed.
-   :::
-3. **Set up a static file server**: expose the project's `data/` directory as a publicly reachable HTTP(S) service and set `BARK_IMAGE_BASE=https://<domain-or-ip:port>` in `.env`. Otherwise Bark notifications carry no map images (see [Static file server examples](/guide/static-server)).
-4. Verify and use daily the same as Path A (steps 2 and 3).
+3. Expose the repository's `data/` directory through a public HTTP(S) static-file server and set its public root as `BARK_IMAGE_BASE`:
+
+   ```dotenv
+   BARK_IMAGE_BASE=https://maps.example.com
+   ```
+
+An unconfigured player defaults to Telegram. If Telegram is not configured, an unconfigured player therefore receives no notification; explicitly assign a Bark alias for Bark-only use.
