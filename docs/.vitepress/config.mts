@@ -137,6 +137,8 @@ function localeTheme(guideText, guideLink, sidebar, editText) {
 }
 
 export default defineConfig({
+  // GitHub Pages uses a repository subpath; local and Cloudflare previews use '/'.
+  base: process.env.DOCS_BASE || '/',
   title: 'MySekaiMapper',
   description: 'A Go resource-gathering point map generator for MySekai',
   cleanUrls: true,
