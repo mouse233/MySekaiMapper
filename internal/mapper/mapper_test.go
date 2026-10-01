@@ -106,11 +106,93 @@ func TestParseArchiveCoercesSafeValuesAndSkipsInvalidRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Drop{
-		{SiteID: 5, ResourceID: 12, PositionX: 1, PositionZ: 2.5},
-		{SiteID: 5, ResourceID: 20, PositionX: 3, PositionZ: 4},
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 12, PositionX: 1, PositionZ: 2.5, Quantity: 1},
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 20, PositionX: 3, PositionZ: 4, Quantity: 1},
 	}
 	if !reflect.DeepEqual(drops, want) {
 		t.Fatalf("got %#v, want %#v", drops, want)
+	}
+}
+
+func TestParseArchiveSupportsPositionalAndNamedRecords(t *testing.T) {
+	payload := map[string]any{
+		"updatedResources": map[string]any{
+			"userMysekaiHarvestMaps": []any{
+				[]any{5, []any{}, []any{
+					[]any{"mysekai_material", 1, -5, 15, 1, 1, "before_drop", 1, nil},
+					[]any{"mysekai_item", 7, -5, 15, 0, 2, "before_drop", 3},
+					[]any{"mysekai_material", 5}, // Truncated record.
+					[]any{"mysekai_material", 5, 0, 0, 0, 3, "before_drop", 0, nil},
+					[]any{"mysekai_material", 5, nil, 0, 0, 4, "before_drop", 1, nil},
+				}},
+				map[string]any{
+					"mysekaiSiteId": 6,
+					"userMysekaiSiteHarvestResourceDrops": []any{
+						map[string]any{"resourceType": "mysekai_material", "resourceId": 12, "positionX": 1, "positionZ": 2, "quantity": 2},
+					},
+				},
+				[]any{7}, // Truncated map.
+			},
+		},
+	}
+	plain, err := msgpack.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drops, err := ParseArchive(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Drop{
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 1, PositionX: -5, PositionZ: 15, Quantity: 1},
+		{SiteID: 5, ResourceType: "mysekai_item", ResourceID: 7, PositionX: -5, PositionZ: 15, Quantity: 3},
+		{SiteID: 6, ResourceType: mysekaiMaterialType, ResourceID: 12, PositionX: 1, PositionZ: 2, Quantity: 2},
+	}
+	if !reflect.DeepEqual(drops, want) {
+		t.Fatalf("got %#v, want %#v", drops, want)
+	}
+}
+
+func TestResourceMatchingKeepsTypesSeparateAndSumsQuantities(t *testing.T) {
+	drops := []Drop{
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 7, PositionX: 1, PositionZ: 2, Quantity: 2},
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 7, PositionX: 1, PositionZ: 2, Quantity: 3},
+		{SiteID: 5, ResourceType: "mysekai_item", ResourceID: 7, PositionX: 1, PositionZ: 2, Quantity: 4},
+	}
+	groups := groupDropsByPoint(drops)
+	if len(groups) != 1 {
+		t.Fatalf("got %d points, want 1", len(groups))
+	}
+	want := map[resourceKey]int{
+		{Type: mysekaiMaterialType, ID: 7}: 5,
+		{Type: "mysekai_item", ID: 7}:      4,
+	}
+	if !reflect.DeepEqual(groups[0].resources, want) {
+		t.Fatalf("got %#v, want %#v", groups[0].resources, want)
+	}
+	if got := Summarize(drops).DistinctResources; got != 2 {
+		t.Fatalf("got %d resource types, want 2", got)
+	}
+}
+
+func TestRareResourcesExcludeOtherTypesWithSameID(t *testing.T) {
+	drops := []Drop{
+		{SiteID: 5, ResourceType: mysekaiMaterialType, ResourceID: 5, Quantity: 3},
+		{SiteID: 6, ResourceType: "mysekai_item", ResourceID: 5, Quantity: 9},
+	}
+	if got := Summarize(drops).RareCounts[5]; got != 3 {
+		t.Fatalf("got %d rare materials, want 3", got)
+	}
+	path, err := WriteRareResources(drops, map[int]Resource{5: {ID: 5, Name: "A"}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(content, []byte("A × 3 （初始空地）")) {
+		t.Fatalf("unexpected rare resource output: %s", content)
 	}
 }
 

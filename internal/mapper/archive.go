@@ -20,10 +20,36 @@ const MaxArchiveSize int64 = 1 * 1024 * 1024
 
 // Drop is the language-neutral form used by the renderer and summary code.
 type Drop struct {
-	SiteID     int
-	ResourceID int
-	PositionX  float64
-	PositionZ  float64
+	SiteID       int
+	ResourceType string
+	ResourceID   int
+	PositionX    float64
+	PositionZ    float64
+	Quantity     int
+}
+
+const mysekaiMaterialType = "mysekai_material"
+
+// Empty types and quantities preserve compatibility with callers that construct
+// material drops directly rather than decoding a game archive.
+func (drop Drop) resourceKey() resourceKey {
+	resourceType := drop.ResourceType
+	if resourceType == "" {
+		resourceType = mysekaiMaterialType
+	}
+	return resourceKey{Type: resourceType, ID: drop.ResourceID}
+}
+
+func (drop Drop) quantity() int {
+	if drop.Quantity <= 0 {
+		return 1
+	}
+	return drop.Quantity
+}
+
+type resourceKey struct {
+	Type string
+	ID   int
 }
 
 // ParseArchive extracts valid harvesting drops from a decrypted MsgPack payload.
@@ -48,7 +74,7 @@ func ParseArchive(plain []byte) ([]Drop, error) {
 
 	drops := make([]Drop, 0)
 	for _, siteValue := range harvestMaps {
-		site, ok := asStringMap(siteValue)
+		site, ok := harvestMapRecord(siteValue)
 		if !ok {
 			continue
 		}
@@ -61,7 +87,7 @@ func ParseArchive(plain []byte) ([]Drop, error) {
 			continue
 		}
 		for _, rawDropValue := range rawDrops {
-			rawDrop, ok := asStringMap(rawDropValue)
+			rawDrop, ok := harvestDropRecord(rawDropValue)
 			if !ok {
 				continue
 			}
@@ -71,15 +97,69 @@ func ParseArchive(plain []byte) ([]Drop, error) {
 			if !resourceOK || !xOK || !zOK {
 				continue
 			}
+			resourceType := mysekaiMaterialType
+			if value, exists := rawDrop["resourceType"]; exists {
+				resourceType, ok = value.(string)
+				if !ok || resourceType == "" {
+					continue
+				}
+			}
+			quantity := 1
+			if value, exists := rawDrop["quantity"]; exists {
+				quantity, ok = asPositiveInt(value)
+				if !ok {
+					continue
+				}
+			}
 			drops = append(drops, Drop{
-				SiteID:     siteID,
-				ResourceID: resourceID,
-				PositionX:  x,
-				PositionZ:  z,
+				SiteID:       siteID,
+				ResourceType: resourceType,
+				ResourceID:   resourceID,
+				PositionX:    x,
+				PositionZ:    z,
+				Quantity:     quantity,
 			})
 		}
 	}
 	return drops, nil
+}
+
+// New archives encode harvest maps and drops as positional MsgPack arrays.
+// Older archives use maps with these field names. Unknown trailing positions
+// are ignored; the ninth drop position is nil in the observed new archive.
+func harvestMapRecord(value any) (map[string]any, bool) {
+	if record, ok := asStringMap(value); ok {
+		return record, true
+	}
+	values, ok := asSlice(value)
+	if !ok || len(values) < 3 {
+		return nil, false
+	}
+	return map[string]any{
+		"mysekaiSiteId":                       values[0],
+		"userMysekaiSiteHarvestFixtures":      values[1],
+		"userMysekaiSiteHarvestResourceDrops": values[2],
+	}, true
+}
+
+func harvestDropRecord(value any) (map[string]any, bool) {
+	if record, ok := asStringMap(value); ok {
+		return record, true
+	}
+	values, ok := asSlice(value)
+	if !ok || len(values) < 8 {
+		return nil, false
+	}
+	return map[string]any{
+		"resourceType":                         values[0],
+		"resourceId":                           values[1],
+		"positionX":                            values[2],
+		"positionZ":                            values[3],
+		"hp":                                   values[4],
+		"seq":                                  values[5],
+		"mysekaiSiteHarvestResourceDropStatus": values[6],
+		"quantity":                             values[7],
+	}, true
 }
 
 // LooksLikeArchive verifies the encrypted payload has the MySekai top-level
@@ -279,12 +359,13 @@ func Summarize(drops []Drop) Summary {
 		SiteCounts: map[int]int{},
 		RareCounts: map[int]int{5: 0, 12: 0, 20: 0, 24: 0},
 	}
-	resources := map[int]struct{}{}
+	resources := map[resourceKey]struct{}{}
 	for _, drop := range drops {
 		summary.SiteCounts[drop.SiteID]++
-		resources[drop.ResourceID] = struct{}{}
-		if _, rare := summary.RareCounts[drop.ResourceID]; rare {
-			summary.RareCounts[drop.ResourceID]++
+		key := drop.resourceKey()
+		resources[key] = struct{}{}
+		if _, rare := summary.RareCounts[key.ID]; rare && key.Type == mysekaiMaterialType {
+			summary.RareCounts[key.ID] += drop.quantity()
 		}
 	}
 	summary.DistinctResources = len(resources)

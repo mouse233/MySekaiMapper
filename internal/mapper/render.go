@@ -60,6 +60,7 @@ func Generate(drops []Drop, resourceCSV, fontPath, outputDir string) (GenerateRe
 	}
 
 	face := loadFace(fontPath, 30)
+	countFace := loadFace(fontPath, 14)
 	bySite := map[int][]Drop{}
 	for _, drop := range drops {
 		bySite[drop.SiteID] = append(bySite[drop.SiteID], drop)
@@ -68,7 +69,7 @@ func Generate(drops []Drop, resourceCSV, fontPath, outputDir string) (GenerateRe
 	result := GenerateResult{Summary: Summarize(drops)}
 	for _, siteID := range sortedSiteIDs(drops) {
 		outPath := filepath.Join(outputDir, fmt.Sprintf("site_%d.png", siteID))
-		if err := renderSite(bySite[siteID], siteID, resources, face, outPath); err != nil {
+		if err := renderSite(bySite[siteID], siteID, resources, face, countFace, outPath); err != nil {
 			return GenerateResult{}, err
 		}
 		result.MapFiles = append(result.MapFiles, outPath)
@@ -106,17 +107,17 @@ type pointKey struct {
 type pointGroup struct {
 	x         float64
 	z         float64
-	resources map[int]int
+	resources map[resourceKey]int
 }
 
-func renderSite(drops []Drop, siteID int, resources map[int]Resource, face font.Face, outPath string) error {
-	groupsByPoint := map[pointKey]map[int]int{}
+func groupDropsByPoint(drops []Drop) []pointGroup {
+	groupsByPoint := map[pointKey]map[resourceKey]int{}
 	for _, drop := range drops {
 		key := pointKey{x: drop.PositionX, z: drop.PositionZ}
 		if groupsByPoint[key] == nil {
-			groupsByPoint[key] = map[int]int{}
+			groupsByPoint[key] = map[resourceKey]int{}
 		}
-		groupsByPoint[key][drop.ResourceID]++
+		groupsByPoint[key][drop.resourceKey()] += drop.quantity()
 	}
 	groups := make([]pointGroup, 0, len(groupsByPoint))
 	for key, groupedResources := range groupsByPoint {
@@ -128,6 +129,11 @@ func renderSite(drops []Drop, siteID int, resources map[int]Resource, face font.
 		}
 		return groups[i].x < groups[j].x
 	})
+	return groups
+}
+
+func renderSite(drops []Drop, siteID int, resources map[int]Resource, face, countFace font.Face, outPath string) error {
+	groups := groupDropsByPoint(drops)
 	if len(groups) == 0 {
 		return fmt.Errorf("site %d has no drops", siteID)
 	}
@@ -156,35 +162,57 @@ func renderSite(drops []Drop, siteID int, resources map[int]Resource, face font.
 	drawText(canvas, face, plotLeft+(plotRight-plotLeft)/2-len(title)*9, 64, title)
 	drawText(canvas, face, plotLeft, canvasHeight-55, "positionX")
 	drawText(canvas, face, 20, plotTop+25, "positionZ")
+	drawText(canvas, face, plotLeft, canvasHeight-15, "I: item   F: furniture   R: music record   M: unknown material")
 
 	toX := func(x float64) int {
-		return plotLeft + int(math.Round((x-minX)/(maxX-minX)*float64(plotRight-plotLeft)))
+		left, right := plotLeft+iconSize/2, plotRight-iconSize/2-90
+		return left + int(math.Round((x-minX)/(maxX-minX)*float64(right-left)))
+	}
+	maxStack := 1
+	for _, group := range groups {
+		if len(group.resources) > maxStack {
+			maxStack = len(group.resources)
+		}
 	}
 	toY := func(z float64) int {
-		return plotTop + int(math.Round((maxZ-z)/(maxZ-minZ)*float64(plotBottom-plotTop)))
+		top, bottom := plotTop+iconSize/2, plotBottom-iconSize/2-(maxStack-1)*iconStep
+		return top + int(math.Round((maxZ-z)/(maxZ-minZ)*float64(bottom-top)))
 	}
 
 	for _, group := range groups {
 		x, z := Rotate(group.x, group.z, siteID)
 		px, py := toX(x), toY(z)
-		resourceIDs := make([]int, 0, len(group.resources))
-		for resourceID := range group.resources {
-			resourceIDs = append(resourceIDs, resourceID)
+		keys := make([]resourceKey, 0, len(group.resources))
+		for key := range group.resources {
+			keys = append(keys, key)
 		}
-		sort.Ints(resourceIDs)
-		for index, resourceID := range resourceIDs {
-			resource, ok := resources[resourceID]
-			if !ok || resource.Image == nil {
-				continue
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i].Type == keys[j].Type {
+				return keys[i].ID < keys[j].ID
 			}
+			// Keep material icons first, followed by the other resource types.
+			if keys[i].Type == mysekaiMaterialType {
+				return true
+			}
+			if keys[j].Type == mysekaiMaterialType {
+				return false
+			}
+			return keys[i].Type < keys[j].Type
+		})
+		for index, key := range keys {
 			offset := index * iconStep
-			pasteScaled(canvas, resource.Image, px-iconSize/2, py-iconSize/2+offset, iconSize)
-			if _, ignored := ignoreCountIDs[resourceID]; ignored {
+			resource, ok := resources[key.ID]
+			if key.Type == mysekaiMaterialType && ok && resource.Image != nil {
+				pasteScaled(canvas, resource.Image, px-iconSize/2, py-iconSize/2+offset, iconSize)
+			} else {
+				drawResourceBadge(canvas, key, px-iconSize/2, py-iconSize/2+offset)
+			}
+			if _, ignored := ignoreCountIDs[key.ID]; ignored && key.Type == mysekaiMaterialType {
 				continue
 			}
-			count := group.resources[resourceID]
+			count := group.resources[key]
 			if count > 1 {
-				drawText(canvas, face, px+iconSize/2+10, py+offset+10, fmt.Sprintf("×%d", count))
+				drawText(canvas, countFace, px+iconSize/2+5, py+offset+7, fmt.Sprintf("×%d", count))
 			}
 		}
 	}
@@ -193,6 +221,32 @@ func renderSite(drops []Drop, siteID int, resources map[int]Resource, face font.
 		return fmt.Errorf("write %s: %w", outPath, err)
 	}
 	return nil
+}
+
+// The CSV contains MySekai material icons only. A type-specific badge keeps
+// items, furniture and records visible without borrowing a material's icon.
+func drawResourceBadge(canvas *image.RGBA, key resourceKey, x, y int) {
+	label := "?"
+	background := color.RGBA{235, 235, 235, 255}
+	switch key.Type {
+	case mysekaiMaterialType:
+		label = "M"
+	case "mysekai_item":
+		label = "I"
+		background = color.RGBA{225, 238, 255, 255}
+	case "mysekai_fixture":
+		label = "F"
+		background = color.RGBA{255, 237, 212, 255}
+	case "mysekai_music_record":
+		label = "R"
+		background = color.RGBA{238, 224, 255, 255}
+	}
+	rect := image.Rect(x, y, x+iconSize, y+iconSize)
+	stdDraw.Draw(canvas, rect, image.NewUniform(background), image.Point{}, stdDraw.Src)
+	strokeRect(canvas, rect, color.RGBA{110, 110, 110, 255})
+	id := fmt.Sprint(key.ID)
+	drawText(canvas, basicfont.Face7x13, x+(iconSize-7)/2, y+15, label)
+	drawText(canvas, basicfont.Face7x13, x+(iconSize-len(id)*7)/2, y+33, id)
 }
 
 func writePNGAtomically(path string, source image.Image) error {
@@ -272,10 +326,10 @@ func WriteRareResources(drops []Drop, resources map[int]Resource, outputDir stri
 		count := 0
 		sites := map[int]struct{}{}
 		for _, drop := range drops {
-			if drop.ResourceID != resourceID {
+			if drop.ResourceID != resourceID || drop.resourceKey().Type != mysekaiMaterialType {
 				continue
 			}
-			count++
+			count += drop.quantity()
 			sites[drop.SiteID] = struct{}{}
 		}
 		siteIDs := make([]int, 0, len(sites))
