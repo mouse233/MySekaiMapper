@@ -2,11 +2,11 @@
 
 # MySekaiMapper
 
-📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
-
 🌐 **Languages**: [English](../) · [简体中文](../zh-CN/) · [繁體中文](../zh-TW/) · [日本語](../ja-JP/) · [한국어](../ko-KR/)
 
-A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram or Bark (Day.app).
+📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
+
+A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram, Bark (Day.app), or AstrBot (QQ).
 
 It works with a MitM capture client or Reqable's **Report Server**: the capture tool uploads a MySekai save, the service decrypts and parses it, renders maps and a rare-resource summary, archives the artifacts, and dispatches notifications without a manual processing step.
 

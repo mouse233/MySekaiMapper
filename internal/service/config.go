@@ -28,13 +28,17 @@ type Settings struct {
 	ReportMaxSize int64
 	ReportToken   string
 
-	TelegramBotToken  string
-	TelegramChatID    string
-	BarkIcon          string
-	BarkImageBase     string
-	FallbackImageBase string
-	BarkMapFile       string
-	PushMapFile       string
+	TelegramBotToken         string
+	TelegramChatID           string
+	BarkIcon                 string
+	BarkImageBase            string
+	FallbackImageBase        string
+	BarkMapFile              string
+	PushMapFile              string
+	AstrBotMapFile           string
+	AstrBotPushURL           string
+	AstrBotPushToken         string
+	AstrBotAllowInsecureHTTP bool
 }
 
 func SettingsFromRoot(root string) Settings {
@@ -64,13 +68,17 @@ func SettingsFromRoot(root string) Settings {
 		ReportMaxSize: envMegabytes("REPORT_MAX_SIZE", 1),
 		ReportToken:   os.Getenv("REPORT_TOKEN"),
 
-		TelegramBotToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
-		TelegramChatID:    os.Getenv("TELEGRAM_CHAT_ID"),
-		BarkIcon:          os.Getenv("BARK_ICON"),
-		BarkImageBase:     os.Getenv("BARK_IMAGE_BASE"),
-		FallbackImageBase: os.Getenv("FALLBACK_IMAGE_BASE"),
-		BarkMapFile:       filepath.Join(configDir, "bark_map.json"),
-		PushMapFile:       filepath.Join(configDir, "push_map.json"),
+		TelegramBotToken:         os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramChatID:           os.Getenv("TELEGRAM_CHAT_ID"),
+		BarkIcon:                 os.Getenv("BARK_ICON"),
+		BarkImageBase:            os.Getenv("BARK_IMAGE_BASE"),
+		FallbackImageBase:        os.Getenv("FALLBACK_IMAGE_BASE"),
+		BarkMapFile:              filepath.Join(configDir, "bark_map.json"),
+		PushMapFile:              filepath.Join(configDir, "push_map.json"),
+		AstrBotMapFile:           filepath.Join(configDir, "astrbot_map.json"),
+		AstrBotPushURL:           strings.TrimSpace(os.Getenv("ASTRBOT_PUSH_URL")),
+		AstrBotPushToken:         os.Getenv("ASTRBOT_PUSH_TOKEN"),
+		AstrBotAllowInsecureHTTP: envBool("ASTRBOT_ALLOW_INSECURE_HTTP", false),
 	}
 }
 

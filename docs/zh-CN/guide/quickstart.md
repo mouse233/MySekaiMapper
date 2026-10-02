@@ -27,6 +27,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | 是 | 16 字节的 MySekai AES-128-CBC 密钥和 IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 仅 Telegram | 从 [@BotFather](https://t.me/BotFather) 获取的 Bot 凭据和目标聊天 ID |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | 仅 AstrBot | Push Lite 根地址和 API token，见下方通知配置 |
 | `BARK_ICON` | 可选 | Bark 通知中包含的图标 URL |
 | `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
 | `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |

@@ -1,4 +1,4 @@
-// Package notify implements local-output notifications for Telegram and Bark.
+// Package notify implements local-output notifications for Telegram, Bark, and AstrBot.
 package notify
 
 import (
@@ -32,13 +32,18 @@ var ErrTelegramPayloadTooLarge = errors.New("Telegram multipart payload exceeds 
 // Config contains notification-only settings. It deliberately has no archive
 // payload fields, so this package never needs to read an encrypted save.
 type Config struct {
-	BarkMapFile       string
-	PushMapFile       string
-	BarkIcon          string
-	BarkImageBase     string
-	FallbackImageBase string
-	TelegramBotToken  string
-	TelegramChatID    string
+	BarkMapFile              string
+	PushMapFile              string
+	BarkIcon                 string
+	BarkImageBase            string
+	FallbackImageBase        string
+	TelegramBotToken         string
+	TelegramChatID           string
+	AstrBotMapFile           string
+	AstrBotPushURL           string
+	AstrBotPushToken         string
+	AstrBotAllowInsecureHTTP bool
+	Logf                     func(format string, args ...any)
 
 	BarkAPIBase       string
 	TelegramAPIBase   string
@@ -80,8 +85,13 @@ func isHTTPSURL(value string) bool {
 
 // ResolveMethod preserves legacy string and modern JSON-list routing syntax.
 func ResolveMethod(value any) (barkAliases []string, sendTelegram bool) {
+	barkAliases, _, sendTelegram = resolveRoutes(value)
+	return
+}
+
+func resolveRoutes(value any) (barkAliases, astrBotAliases []string, sendTelegram bool) {
 	if value == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	selections := make([]string, 0)
 	switch typed := value.(type) {
@@ -95,7 +105,7 @@ func ResolveMethod(value any) (barkAliases []string, sendTelegram bool) {
 		}
 	case string:
 		if typed == "" || typed == "none" {
-			return nil, false
+			return nil, nil, false
 		}
 		if typed == "telegram" {
 			selections = append(selections, "telegram")
@@ -106,16 +116,30 @@ func ResolveMethod(value any) (barkAliases []string, sendTelegram bool) {
 			selections = append(selections, typed)
 		}
 	default:
-		return nil, false
+		return nil, nil, false
 	}
 	for _, selection := range selections {
 		if selection == "telegram" {
 			sendTelegram = true
+		} else if strings.HasPrefix(selection, "astrbot:") {
+			alias := strings.TrimPrefix(selection, "astrbot:")
+			if !containsAlias(astrBotAliases, alias) {
+				astrBotAliases = append(astrBotAliases, alias)
+			}
 		} else if selection != "" {
 			barkAliases = append(barkAliases, selection)
 		}
 	}
-	return barkAliases, sendTelegram
+	return barkAliases, astrBotAliases, sendTelegram
+}
+
+func containsAlias(aliases []string, alias string) bool {
+	for _, existing := range aliases {
+		if existing == alias {
+			return true
+		}
+	}
+	return false
 }
 
 // hasPushMethod distinguishes an explicit routing value from an absent value
@@ -182,9 +206,9 @@ func (n *Notifier) BarkKey(alias, explicitKey string) string {
 	return n.barkMap()[alias]
 }
 
-// Notify sends the rare summary first, then Bark image links and/or Telegram
-// images according to the player's configured route. A failed channel does not
-// prevent attempts to the other selected channel.
+// Notify sends summaries and maps according to the player's route. AstrBot
+// submissions are acknowledged as queued, not delivered. Failed requests do not
+// prevent attempts to other selected targets and channels.
 func (n *Notifier) Notify(ctx context.Context, outputDir, taskID, playerID, imageBase string) error {
 	if n.configErr != nil {
 		return n.configErr
@@ -194,7 +218,7 @@ func (n *Notifier) Notify(ctx context.Context, outputDir, taskID, playerID, imag
 	if !exists || !hasPushMethod(method) {
 		method = "telegram"
 	}
-	barkAliases, sendTelegram := ResolveMethod(method)
+	barkAliases, astrBotAliases, sendTelegram := resolveRoutes(method)
 
 	errorsSeen := make([]error, 0)
 	rareCompact := compactRareText(rareText)
@@ -232,6 +256,11 @@ func (n *Notifier) Notify(ctx context.Context, outputDir, taskID, playerID, imag
 	if sendTelegram {
 		caption := notificationHeader(taskID, playerID) + rareText
 		if err := n.sendTelegram(ctx, images, caption); err != nil {
+			errorsSeen = append(errorsSeen, err)
+		}
+	}
+	if len(astrBotAliases) > 0 {
+		if err := n.sendAstrBot(ctx, astrBotAliases, images, notificationHeader(taskID, playerID)+rareText); err != nil {
 			errorsSeen = append(errorsSeen, err)
 		}
 	}

@@ -4,7 +4,7 @@
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/zh-CN/>
 
-MySekaiMapper 是面向 *Project SEKAI* MySekai 存档的 Go 服务：将加密存档转换为采集点地图，并将结果发送到 Telegram 或 Bark（Day.app）。
+MySekaiMapper 是面向 *Project SEKAI* MySekai 存档的 Go 服务：将加密存档转换为采集点地图，并将结果发送到 Telegram、Bark（Day.app）或 AstrBot（QQ）。
 
 它可配合 MitM 抓包客户端或 Reqable 的 **上报服务器（Report Server）** 使用：抓包工具上传 MySekai 存档，服务解密、解析并绘制地图和稀有资源摘要，归档产物后自动发送通知，无需手动处理。
 
@@ -55,6 +55,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | 是 | 16 字节的 MySekai AES-128-CBC 密钥和 IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 仅 Telegram | 从 [@BotFather](https://t.me/BotFather) 获取的 Bot 凭据和目标聊天 ID |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | 仅 AstrBot | Push Lite 根地址和 API token，见下方通知配置 |
 | `BARK_ICON` | 可选 | Bark 通知中包含的图标 URL |
 | `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
 | `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |
@@ -234,7 +235,7 @@ gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
 
 ### 玩家路由
 
-`config/push_map.json` 将玩家 ID 映射为 `telegram`、Bark 别名、`none`、`+tg` 字符串或方法数组：
+`config/push_map.json` 将玩家 ID 映射为 `telegram`、Bark 别名、`astrbot:<别名>`、`none`、`+tg` 字符串或方法数组：
 
 ```json
 {
@@ -249,6 +250,44 @@ gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
 ### Telegram
 
 Telegram 将全部生成的常规 `site_*.png` 作为本地 multipart 媒体组上传。它需要 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`，但不需要公网图片服务器。Telegram 失败不会阻止已配置的 Bark 尝试。
+
+### AstrBot Push Lite（QQ）
+
+在现有 AstrBot 实例中安装 [astrbot_plugin_push_lite](https://github.com/Raven95676/astrbot_plugin_push_lite)。QQ 使用 OneBot v11 接入 AstrBot，并配置插件的 API token 和监听端口（默认 `9966`）。从 `config/astrbot_map.example.json` 创建 `config/astrbot_map.json`：
+
+```json
+{
+  "qq_me": {"platform_id": "qq_main", "type": "private", "qq": "123456789"},
+  "qq_group": {"platform_id": "qq_main", "type": "group", "qq": "987654321"},
+  "session": {"umo": "qq_main:FriendMessage:123456789"}
+}
+```
+
+`platform_id` 是 AstrBot 中实际的机器人／平台实例 ID，不一定是适配器类型 `aiocqhttp`，也不是机器人 QQ 号。`type` 必须为 `private`（私聊）或 `group`（群聊）；`qq` 用**字符串**填写接收人的 QQ 号或群号。程序自动构造 `platform_id:FriendMessage:qq` 或 `platform_id:GroupMessage:qq`。只需通过 `/sid` 确认一次平台 ID，无需每个接收人执行命令。也可仅填写 `umo` 使用完整会话标识，但不能与 `platform_id`、`type`、`qq` 混用。参见 [AstrBot 会话文档](https://docs.astrbot.app/use/command.html#name)。
+
+在 `config/push_map.json` 中使用 `astrbot:<别名>` 选择接收人，可与现有渠道组合：
+
+```json
+{
+  "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456791": "none"
+}
+```
+
+在 `.env` 配置推送服务：
+
+```dotenv
+ASTRBOT_PUSH_URL=http://astrbot:9966
+ASTRBOT_PUSH_TOKEN=your-plugin-api-token
+ASTRBOT_ALLOW_INSECURE_HTTP=1
+```
+
+`ASTRBOT_PUSH_URL` 填写服务**根地址**，不包含 `/send`，支持反向代理路径前缀。默认要求 HTTPS；仅在可信本机或 Docker 私有网络使用 HTTP 时设置 `ASTRBOT_ALLOW_INSECURE_HTTP=1`。不同容器应加入同一网络并使用 AstrBot 服务名，`localhost` 指向当前容器；宿主机部署则使用可达地址和插件映射端口。请求使用 Bearer token，程序不会跟随重定向。
+
+`serve` 和 `notify` 都会对每个接收人先提交文字摘要，再将全部常规 `site_*.png` 分别以 Base64 图片提交，无需公网图片服务器或共享目录。每张图片编码前最多 8 MiB，反向代理也需允许相应请求大小。同一路由中重复的 AstrBot 别名只发送一次；某个接收人或请求失败，不会阻止其他接收人和渠道的尝试。
+
+成功响应表示**已进入 Push Lite 队列**，并不代表 QQ 已送达；日志会明确记录 `request queued`。本接入不使用送达回调，也不自动重试。插件队列在内存中，重启可能丢失待发消息，最终发送结果请查看 AstrBot 日志。需显式配置 AstrBot 路由，没有可用路由值的玩家仍默认 Telegram。`.env` 和 `config/astrbot_map.json` 已被 Git 忽略，请保持私密。
 
 ### Bark
 
@@ -345,6 +384,7 @@ bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 │   └── service/             # 队列、存储与归档流水线
 ├── assets/                  # 字体和资源图标
 ├── config/                  # 本地路由模板
+│   ├── astrbot_map.example.json
 │   ├── bark_map.example.json
 │   └── push_map.example.json
 ├── data/                    # 被忽略的运行时输出
@@ -357,7 +397,7 @@ bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 └── .env.example             # 配置模板
 ```
 
-`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json` 是私密的运行时数据，会被 Git 忽略。
+`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json`, `config/astrbot_map.json` 是私密的运行时数据，会被 Git 忽略。
 
 ## 测试
 

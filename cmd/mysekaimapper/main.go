@@ -163,13 +163,18 @@ func runNotify(root string, args []string) {
 
 func newNotifier(settings service.Settings) *notifyservice.Notifier {
 	return notifyservice.New(notifyservice.Config{
-		BarkMapFile:       settings.BarkMapFile,
-		PushMapFile:       settings.PushMapFile,
-		BarkIcon:          settings.BarkIcon,
-		BarkImageBase:     settings.BarkImageBase,
-		FallbackImageBase: settings.FallbackImageBase,
-		TelegramBotToken:  settings.TelegramBotToken,
-		TelegramChatID:    settings.TelegramChatID,
+		BarkMapFile:              settings.BarkMapFile,
+		PushMapFile:              settings.PushMapFile,
+		BarkIcon:                 settings.BarkIcon,
+		BarkImageBase:            settings.BarkImageBase,
+		FallbackImageBase:        settings.FallbackImageBase,
+		TelegramBotToken:         settings.TelegramBotToken,
+		TelegramChatID:           settings.TelegramChatID,
+		AstrBotMapFile:           settings.AstrBotMapFile,
+		AstrBotPushURL:           settings.AstrBotPushURL,
+		AstrBotPushToken:         settings.AstrBotPushToken,
+		AstrBotAllowInsecureHTTP: settings.AstrBotAllowInsecureHTTP,
+		Logf:                     log.Printf,
 	})
 }
 

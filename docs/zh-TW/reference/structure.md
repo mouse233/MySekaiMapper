@@ -13,6 +13,7 @@
 │   └── service/             # 佇列、儲存與封存管線
 ├── assets/                  # 字型與資源圖示
 ├── config/                  # 本機路由範本
+│   ├── astrbot_map.example.json
 │   ├── bark_map.example.json
 │   └── push_map.example.json
 ├── data/                    # 忽略的執行階段資料
@@ -25,4 +26,4 @@
 └── .env.example             # 設定範本
 ```
 
-`data/`、`.env`、`config/bark_map.json` 與 `config/push_map.json` 是私密的執行階段資料，且會被 Git 忽略。
+`data/`、`.env`、`config/bark_map.json` 與 `config/push_map.json`, `config/astrbot_map.json` 是私密的執行階段資料，且會被 Git 忽略。

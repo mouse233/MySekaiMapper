@@ -27,6 +27,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | はい | 16 バイトの MySekai AES-128-CBC キーおよび IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram のみ | [@BotFather](https://t.me/BotFather) から取得する Bot 認証情報と送信先チャット ID |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | AstrBot のみ | Push Lite のベース URL と API token。通知設定を参照 |
 | `BARK_ICON` | 任意 | Bark 通知に含めるアイコン URL |
 | `BARK_IMAGE_BASE` | Bark 画像 | アーカイブしたマップ画像の公開ベース URL |
 | `FALLBACK_IMAGE_BASE` | 任意 | `BARK_IMAGE_BASE` 未設定時の画像ベース URL |

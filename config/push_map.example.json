@@ -1,5 +1,7 @@
 {
   "1234567890123456789": ["telegram"],
   "1234567890123456790": ["telegram", "klee"],
-  "1234567890123456791": ["telegram", "dodoco"]
+  "1234567890123456791": ["telegram", "dodoco"],
+  "1234567890123456792": ["astrbot:qq_me", "astrbot:qq_group"],
+  "1234567890123456793": ["astrbot:qq_me", "telegram"]
 }
