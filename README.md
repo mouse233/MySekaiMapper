@@ -95,12 +95,12 @@ Players absent from `config/push_map.json` default to Telegram. Path A does not 
 In addition to the Path A configuration (Telegram may be omitted for Bark-only routes):
 
 1. Create `config/bark_map.json` from `config/bark_map.example.json`, mapping a Bark alias to each device key.
-2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to a Bark alias, `telegram`, `none`, or a combination:
+2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to `bark:<alias>`, `telegram`, `none`, or a combination:
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```
@@ -236,17 +236,19 @@ Create local configuration from `config/push_map.example.json` and `config/bark_
 
 ### Player routing
 
-`config/push_map.json` maps player IDs to `telegram`, Bark aliases, `astrbot:<alias>`, `none`, `+tg` strings, or arrays of methods:
+`config/push_map.json` maps player IDs to `telegram`, `bark:<alias>`, `astrbot:<alias>`, `none`, prefixed `+tg` strings, or arrays of methods:
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 Players without an available routing value default to Telegram.
+
+Bark routes must use `bark:<alias>`; AstrBot routes use `astrbot:<alias>`. When upgrading, change bare Bark targets such as `"sls"` and `"xufan"` to `"bark:sls"` and `"bark:xufan"` in `push_map.json`. Keys in `bark_map.json` stay unchanged (`"sls"`, `"xufan"`). Bare aliases are rejected with a routing error; other valid selected targets are still attempted. The string shorthand `"bark:klee+tg"` is supported, but `["bark:klee", "telegram"]` is recommended.
 
 ### Telegram
 
@@ -271,7 +273,7 @@ Select aliases using `astrbot:<alias>` in `config/push_map.json`:
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
@@ -414,7 +416,7 @@ GitHub Actions runs the Go test suite and build for pushes and pull requests.
 
 The active runtime is Go-only. The module follows the standard root layout with `cmd/`, `internal/`, `go.mod`, and `go.sum`; Python source, dependencies, and CI were removed. The archived reference implementation remains in the [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) branch and [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) tag.
 
-The HTTP endpoints, environment variables, output names, archive layout, and routing-file formats remain compatible. The Go renderer uses a fixed canvas, so its generated PNGs are not guaranteed to be pixel-identical to the former Matplotlib output.
+The HTTP endpoints, environment variables, output names, archive layout, and routing-file formats remain compatible apart from the required `bark:` route prefix. The Go renderer uses a fixed canvas, so its generated PNGs are not guaranteed to be pixel-identical to the former Matplotlib output.
 
 ## Disclaimer
 

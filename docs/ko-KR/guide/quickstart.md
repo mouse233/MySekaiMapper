@@ -66,12 +66,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 경로 A 구성에 더하여(오직 Bark로 라우팅하는 경우 Telegram은 생략 가능) 다음을 설정합니다.
 
 1. `config/bark_map.example.json`을 바탕으로 `config/bark_map.json`을 만들고, 각 기기 키에 Bark 별칭을 매핑합니다.
-2. `config/push_map.example.json`을 바탕으로 `config/push_map.json`을 만들고, 플레이어 ID를 Bark 별칭, `telegram`, `none` 또는 이들의 조합에 매핑합니다.
+2. `config/push_map.example.json`을 바탕으로 `config/push_map.json`을 만들고, 플레이어 ID를 `bark:<별칭>`, `telegram`, `none` 또는 이들의 조합에 매핑합니다.
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```

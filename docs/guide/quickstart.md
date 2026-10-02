@@ -67,12 +67,12 @@ Players absent from `config/push_map.json` default to Telegram. Path A does not 
 In addition to the Path A configuration (Telegram may be omitted for Bark-only routes):
 
 1. Create `config/bark_map.json` from `config/bark_map.example.json`, mapping a Bark alias to each device key.
-2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to a Bark alias, `telegram`, `none`, or a combination:
+2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to `bark:<alias>`, `telegram`, `none`, or a combination:
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```

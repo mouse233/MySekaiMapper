@@ -66,12 +66,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 除路徑 A 的設定外（僅使用 Bark 的路由可省略 Telegram）：
 
 1. 由 `config/bark_map.example.json` 建立 `config/bark_map.json`，將每個 Bark 別名對應至裝置金鑰。
-2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 Bark 別名、`telegram`、`none`，或它們的組合：
+2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 `bark:<別名>`、`telegram`、`none`，或它們的組合：
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```

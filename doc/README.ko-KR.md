@@ -94,12 +94,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 경로 A 구성에 더하여(오직 Bark로 라우팅하는 경우 Telegram은 생략 가능) 다음을 설정합니다.
 
 1. `config/bark_map.example.json`을 바탕으로 `config/bark_map.json`을 만들고, 각 기기 키에 Bark 별칭을 매핑합니다.
-2. `config/push_map.example.json`을 바탕으로 `config/push_map.json`을 만들고, 플레이어 ID를 Bark 별칭, `telegram`, `none` 또는 이들의 조합에 매핑합니다.
+2. `config/push_map.example.json`을 바탕으로 `config/push_map.json`을 만들고, 플레이어 ID를 `bark:<별칭>`, `telegram`, `none` 또는 이들의 조합에 매핑합니다.
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```
@@ -235,17 +235,19 @@ gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
 
 ### 플레이어 라우팅
 
-`config/push_map.json`은 플레이어 ID를 `telegram`, Bark 별칭, `astrbot:<별칭>`, `none`, `+tg` 문자열 또는 메서드 배열에 매핑합니다:
+`config/push_map.json`은 플레이어 ID를 `telegram`, `bark:<별칭>`, `astrbot:<별칭>`, `none`, 접두사가 있는 `+tg` 문자열 또는 메서드 배열에 매핑합니다:
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 사용 가능한 라우팅 값이 없는 플레이어는 기본적으로 Telegram을 사용합니다.
+
+Bark 경로는 반드시 `bark:<별칭>`을 사용하고 AstrBot 경로는 `astrbot:<별칭>`을 사용합니다. 업데이트할 때 `push_map.json`의 `"sls"`, `"xufan"`을 `"bark:sls"`, `"bark:xufan"`으로 변경하세요. `bark_map.json` 키는 `"sls"`, `"xufan"` 그대로 유지합니다. 접두사가 없는 별칭은 경로 오류를 반환하지만 다른 유효한 대상은 계속 시도합니다. `"bark:klee+tg"` 문자열도 지원하지만 `["bark:klee", "telegram"]` 배열을 권장합니다.
 
 ### Telegram
 
@@ -270,7 +272,7 @@ Telegram은 생성된 모든 일반 `site_*.png` 파일을 로컬 multipart 미�
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
@@ -413,7 +415,7 @@ GitHub Actions는 푸시와 풀 리퀘스트에 대해 Go 테스트 모음과 �
 
 현재 런타임은 Go만 사용합니다. 모듈은 `cmd/`, `internal/`, `go.mod`, `go.sum`으로 이루어진 표준 루트 구조를 따르며 Python 소스, 의존성 및 CI는 제거되었습니다. 보관된 참조 구현은 [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) 브랜치와 [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) 태그에 남아 있습니다.
 
-HTTP 엔드포인트, 환경 변수, 출력 이름, 아카이브 레이아웃 및 라우팅 파일 형식은 호환성을 유지합니다. Go 렌더러는 고정 캔버스를 사용하므로 생성되는 PNG가 이전 Matplotlib 출력과 픽셀 단위로 동일하다고 보장되지는 않습니다.
+Bark 경로에 `bark:` 접두사가 필수가 된 점을 제외하면 HTTP 엔드포인트, 환경 변수, 출력 이름, 아카이브 레이아웃 및 라우팅 파일 형식은 호환성을 유지합니다. Go 렌더러는 고정 캔버스를 사용하므로 생성되는 PNG가 이전 Matplotlib 출력과 픽셀 단위로 동일하다고 보장되지는 않습니다.
 
 ## 면책 조항
 

@@ -6,17 +6,19 @@
 
 ### 플레이어 라우팅
 
-`config/push_map.json`은 플레이어 ID를 `telegram`, Bark 별칭, `astrbot:<별칭>`, `none`, `+tg` 문자열 또는 메서드 배열에 매핑합니다:
+`config/push_map.json`은 플레이어 ID를 `telegram`, `bark:<별칭>`, `astrbot:<별칭>`, `none`, 접두사가 있는 `+tg` 문자열 또는 메서드 배열에 매핑합니다:
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 사용 가능한 라우팅 값이 없는 플레이어는 기본적으로 Telegram을 사용합니다.
+
+Bark 경로는 반드시 `bark:<별칭>`을 사용하고 AstrBot 경로는 `astrbot:<별칭>`을 사용합니다. 업데이트할 때 `push_map.json`의 `"sls"`, `"xufan"`을 `"bark:sls"`, `"bark:xufan"`으로 변경하세요. `bark_map.json` 키는 `"sls"`, `"xufan"` 그대로 유지합니다. 접두사가 없는 별칭은 경로 오류를 반환하지만 다른 유효한 대상은 계속 시도합니다. `"bark:klee+tg"` 문자열도 지원하지만 `["bark:klee", "telegram"]` 배열을 권장합니다.
 
 ### Telegram
 
@@ -41,7 +43,7 @@ Telegram은 생성된 모든 일반 `site_*.png` 파일을 로컬 multipart 미�
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```

@@ -6,17 +6,19 @@
 
 ### プレイヤールーティング
 
-`config/push_map.json` は、プレイヤー ID を `telegram`、Bark エイリアス、`astrbot:<エイリアス>`、`none`、`+tg` 文字列、またはメソッド配列にマッピングします：
+`config/push_map.json` は、プレイヤー ID を `telegram`、`bark:<エイリアス>`、`astrbot:<エイリアス>`、`none`、接頭辞付きの `+tg` 文字列、またはメソッド配列にマッピングします：
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 利用可能なルーティング値がないプレイヤーは、デフォルトで Telegram に送信されます。
+
+Bark のルートには `bark:<エイリアス>` が必須です。AstrBot は `astrbot:<エイリアス>` を使います。更新時に `push_map.json` の `"sls"`、`"xufan"` を `"bark:sls"`、`"bark:xufan"` に変更してください。`bark_map.json` のキーは `"sls"`、`"xufan"` のままです。接頭辞のないルートはエラーになりますが、他の有効な通知先への送信は続行します。`"bark:klee+tg"` も使えますが、配列 `["bark:klee", "telegram"]` を推奨します。
 
 ### Telegram
 
@@ -41,7 +43,7 @@ Telegram は、生成された通常の `site_*.png` をすべて、ローカル
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```

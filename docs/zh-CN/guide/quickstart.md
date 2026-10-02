@@ -66,12 +66,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 在路径 A 的配置基础上（仅使用 Bark 的路由可以省略 Telegram）：
 
 1. 从 `config/bark_map.example.json` 创建 `config/bark_map.json`，将 Bark 别名映射到各设备密钥。
-2. 从 `config/push_map.example.json` 创建 `config/push_map.json`，将玩家 ID 映射到 Bark 别名、`telegram`、`none` 或它们的组合：
+2. 从 `config/push_map.example.json` 创建 `config/push_map.json`，将玩家 ID 映射到 `bark:<别名>`、`telegram`、`none` 或它们的组合：
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```

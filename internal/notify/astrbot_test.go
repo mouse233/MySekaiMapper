@@ -43,8 +43,11 @@ func TestAstrBotTargetSession(t *testing.T) {
 }
 
 func TestAstrBotStringAndLegacyCombinedRoutes(t *testing.T) {
-	for _, route := range []any{"astrbot:me", "astrbot:me+tg", []any{"astrbot:me", "device", "telegram"}} {
-		bark, astrbot, telegram := resolveRoutes(route)
+	for _, route := range []any{"astrbot:me", "astrbot:me+tg", []any{"astrbot:me", "bark:device", "telegram"}} {
+		bark, astrbot, telegram, err := resolveRoutes(route)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(astrbot) != 1 || astrbot[0] != "me" {
 			t.Fatalf("AstrBot route lost: %v", route)
 		}
@@ -77,7 +80,7 @@ func queued(response http.ResponseWriter) {
 }
 
 func TestNotifyAstrBotTextImagesMultipleTargetsAndLegacyRoutes(t *testing.T) {
-	dir, config := astrBotFixture(t, []string{"astrbot:me", "astrbot:group", "astrbot:me", "telegram", "device"})
+	dir, config := astrBotFixture(t, []string{"astrbot:me", "astrbot:group", "astrbot:me", "telegram", "bark:device"})
 	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=")
 	if err != nil {
 		t.Fatal(err)

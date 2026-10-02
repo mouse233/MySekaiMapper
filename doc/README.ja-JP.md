@@ -94,12 +94,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 経路 A の設定に加えて（Bark 専用のルートでは Telegram を省略できます）、次を行います。
 
 1. `config/bark_map.example.json` から `config/bark_map.json` を作成し、Bark エイリアスと各デバイスキーを対応付けます。
-2. `config/push_map.example.json` から `config/push_map.json` を作成し、プレイヤー ID を Bark エイリアス、`telegram`、`none`、またはそれらの組み合わせへ対応付けます。
+2. `config/push_map.example.json` から `config/push_map.json` を作成し、プレイヤー ID を `bark:<エイリアス>`、`telegram`、`none`、またはそれらの組み合わせへ対応付けます。
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```
@@ -235,17 +235,19 @@ gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
 
 ### プレイヤールーティング
 
-`config/push_map.json` は、プレイヤー ID を `telegram`、Bark エイリアス、`astrbot:<エイリアス>`、`none`、`+tg` 文字列、またはメソッド配列にマッピングします：
+`config/push_map.json` は、プレイヤー ID を `telegram`、`bark:<エイリアス>`、`astrbot:<エイリアス>`、`none`、接頭辞付きの `+tg` 文字列、またはメソッド配列にマッピングします：
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 利用可能なルーティング値がないプレイヤーは、デフォルトで Telegram に送信されます。
+
+Bark のルートには `bark:<エイリアス>` が必須です。AstrBot は `astrbot:<エイリアス>` を使います。更新時に `push_map.json` の `"sls"`、`"xufan"` を `"bark:sls"`、`"bark:xufan"` に変更してください。`bark_map.json` のキーは `"sls"`、`"xufan"` のままです。接頭辞のないルートはエラーになりますが、他の有効な通知先への送信は続行します。`"bark:klee+tg"` も使えますが、配列 `["bark:klee", "telegram"]` を推奨します。
 
 ### Telegram
 
@@ -270,7 +272,7 @@ Telegram は、生成された通常の `site_*.png` をすべて、ローカル
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
@@ -413,7 +415,7 @@ GitHub Actions は、push とプルリクエストに対して Go のテスト�
 
 現在のランタイムは Go のみで構成されています。モジュールは `cmd/`、`internal/`、`go.mod`、`go.sum` による標準のルートレイアウトに従っています。Python のソース、依存関係、CI は削除されました。アーカイブ済みの参照実装は、[`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) ブランチおよび [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) タグに残されています。
 
-HTTP エンドポイント、環境変数、出力名、アーカイブレイアウト、ルーティングファイル形式は互換性を維持しています。Go レンダラーは固定キャンバスを使用するため、生成される PNG が以前の Matplotlib 出力とピクセル単位で完全に同一になる保証はありません。
+Bark ルートで `bark:` 接頭辞が必須になった点を除き、HTTP エンドポイント、環境変数、出力名、アーカイブレイアウト、ルーティングファイル形式は互換性を維持しています。Go レンダラーは固定キャンバスを使用するため、生成される PNG が以前の Matplotlib 出力とピクセル単位で完全に同一になる保証はありません。
 
 ## 免責事項
 

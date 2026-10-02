@@ -66,12 +66,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 経路 A の設定に加えて（Bark 専用のルートでは Telegram を省略できます）、次を行います。
 
 1. `config/bark_map.example.json` から `config/bark_map.json` を作成し、Bark エイリアスと各デバイスキーを対応付けます。
-2. `config/push_map.example.json` から `config/push_map.json` を作成し、プレイヤー ID を Bark エイリアス、`telegram`、`none`、またはそれらの組み合わせへ対応付けます。
+2. `config/push_map.example.json` から `config/push_map.json` を作成し、プレイヤー ID を `bark:<エイリアス>`、`telegram`、`none`、またはそれらの組み合わせへ対応付けます。
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```

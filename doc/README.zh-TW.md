@@ -94,12 +94,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 除路徑 A 的設定外（僅使用 Bark 的路由可省略 Telegram）：
 
 1. 由 `config/bark_map.example.json` 建立 `config/bark_map.json`，將每個 Bark 別名對應至裝置金鑰。
-2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 Bark 別名、`telegram`、`none`，或它們的組合：
+2. 由 `config/push_map.example.json` 建立 `config/push_map.json`，將玩家 ID 對應至 `bark:<別名>`、`telegram`、`none`，或它們的組合：
 
     ```json
     {
-      "1234567890123456789": ["klee"],
-      "1234567890123456790": ["telegram", "klee"],
+      "1234567890123456789": ["bark:klee"],
+      "1234567890123456790": ["telegram", "bark:klee"],
       "1234567890123456791": "none"
     }
     ```
@@ -235,17 +235,19 @@ gzip -c report.har.json | curl -X POST http://127.0.0.1:9478/reqable/report \
 
 ### 玩家路由
 
-`config/push_map.json` 將玩家 ID 對映至 `telegram`、Bark 別名、`astrbot:<別名>`、`none`、`+tg` 字串或方法陣列：
+`config/push_map.json` 將玩家 ID 對映至 `telegram`、`bark:<別名>`、`astrbot:<別名>`、`none`、含管道前綴的 `+tg` 字串或方法陣列：
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 沒有可用路由值的玩家預設使用 Telegram。
+
+Bark 路由必須使用 `bark:<別名>`，與 AstrBot 的 `astrbot:<別名>` 一致。升級時，將 `push_map.json` 中的 `"sls"`、`"xufan"` 改為 `"bark:sls"`、`"bark:xufan"`；`bark_map.json` 的鍵仍為 `"sls"`、`"xufan"`，無需前綴。未加前綴的別名會回報路由錯誤，其他有效目標仍會繼續嘗試。支援 `"bark:klee+tg"` 字串簡寫，但建議使用 `["bark:klee", "telegram"]` 陣列。
 
 ### Telegram
 
@@ -270,7 +272,7 @@ Telegram 會將所有產生的常規 `site_*.png` 以本地 multipart 媒體群�
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
@@ -413,7 +415,7 @@ GitHub Actions 會在推送與提取請求時執行 Go 測試套件與建置。
 
 目前執行階段僅使用 Go。此模組採用標準根目錄結構，包含 `cmd/`、`internal/`、`go.mod` 與 `go.sum`；Python 原始碼、相依項目與 CI 均已移除。封存的參考實作仍保留在 [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) 分支與 [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) 標籤中。
 
-HTTP 端點、環境變數、輸出名稱、封存配置與路由檔格式皆維持相容。Go 渲染器使用固定畫布，因此產生的 PNG 不保證與先前 Matplotlib 輸出逐像素相同。
+除了 Bark 路由現在必須加上 `bark:` 前綴外，HTTP 端點、環境變數、輸出名稱、封存配置與路由檔格式皆維持相容。Go 渲染器使用固定畫布，因此產生的 PNG 不保證與先前 Matplotlib 輸出逐像素相同。
 
 ## 免責聲明
 

@@ -83,15 +83,16 @@ func isHTTPSURL(value string) bool {
 	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
 }
 
-// ResolveMethod preserves legacy string and modern JSON-list routing syntax.
+// ResolveMethod returns Bark aliases and the Telegram selection for supported
+// string/list routes. Notify also reports invalid selections to the caller.
 func ResolveMethod(value any) (barkAliases []string, sendTelegram bool) {
-	barkAliases, _, sendTelegram = resolveRoutes(value)
+	barkAliases, _, sendTelegram, _ = resolveRoutes(value)
 	return
 }
 
-func resolveRoutes(value any) (barkAliases, astrBotAliases []string, sendTelegram bool) {
+func resolveRoutes(value any) (barkAliases, astrBotAliases []string, sendTelegram bool, routeErr error) {
 	if value == nil {
-		return nil, nil, false
+		return nil, nil, false, nil
 	}
 	selections := make([]string, 0)
 	switch typed := value.(type) {
@@ -105,32 +106,42 @@ func resolveRoutes(value any) (barkAliases, astrBotAliases []string, sendTelegra
 		}
 	case string:
 		if typed == "" || typed == "none" {
-			return nil, nil, false
+			return nil, nil, false, nil
 		}
 		if typed == "telegram" {
 			selections = append(selections, "telegram")
-		} else if strings.Contains(typed, "+tg") {
-			alias := strings.SplitN(typed, "+tg", 2)[0]
+		} else if strings.HasSuffix(typed, "+tg") {
+			alias := strings.TrimSuffix(typed, "+tg")
 			selections = append(selections, alias, "telegram")
 		} else {
 			selections = append(selections, typed)
 		}
 	default:
-		return nil, nil, false
+		return nil, nil, false, nil
 	}
+	var errorsSeen []error
 	for _, selection := range selections {
 		if selection == "telegram" {
 			sendTelegram = true
+		} else if strings.HasPrefix(selection, "bark:") {
+			alias := strings.TrimPrefix(selection, "bark:")
+			if strings.TrimSpace(alias) == "" {
+				errorsSeen = append(errorsSeen, errors.New("Bark route requires a nonempty alias after bark:"))
+			} else {
+				barkAliases = append(barkAliases, alias)
+			}
 		} else if strings.HasPrefix(selection, "astrbot:") {
 			alias := strings.TrimPrefix(selection, "astrbot:")
-			if !containsAlias(astrBotAliases, alias) {
+			if strings.TrimSpace(alias) == "" {
+				errorsSeen = append(errorsSeen, errors.New("AstrBot route requires a nonempty alias after astrbot:"))
+			} else if !containsAlias(astrBotAliases, alias) {
 				astrBotAliases = append(astrBotAliases, alias)
 			}
 		} else if selection != "" {
-			barkAliases = append(barkAliases, selection)
+			errorsSeen = append(errorsSeen, fmt.Errorf("unsupported notification route %q; use telegram, bark:<alias>, or astrbot:<alias>", selection))
 		}
 	}
-	return barkAliases, astrBotAliases, sendTelegram
+	return barkAliases, astrBotAliases, sendTelegram, errors.Join(errorsSeen...)
 }
 
 func containsAlias(aliases []string, alias string) bool {
@@ -218,9 +229,12 @@ func (n *Notifier) Notify(ctx context.Context, outputDir, taskID, playerID, imag
 	if !exists || !hasPushMethod(method) {
 		method = "telegram"
 	}
-	barkAliases, astrBotAliases, sendTelegram := resolveRoutes(method)
+	barkAliases, astrBotAliases, sendTelegram, routeErr := resolveRoutes(method)
 
 	errorsSeen := make([]error, 0)
+	if routeErr != nil {
+		errorsSeen = append(errorsSeen, routeErr)
+	}
 	rareCompact := compactRareText(rareText)
 	for _, alias := range barkAliases {
 		key := n.BarkKey(alias, "")

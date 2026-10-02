@@ -6,17 +6,19 @@
 
 ### 玩家路由
 
-`config/push_map.json` 将玩家 ID 映射为 `telegram`、Bark 别名、`astrbot:<别名>`、`none`、`+tg` 字符串或方法数组：
+`config/push_map.json` 将玩家 ID 映射为 `telegram`、`bark:<别名>`、`astrbot:<别名>`、`none`、带渠道前缀的 `+tg` 字符串或方法数组：
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 没有可用路由值的玩家默认走 Telegram。
+
+Bark 路由必须使用 `bark:<别名>`，与 AstrBot 的 `astrbot:<别名>` 对齐。升级时，将 `push_map.json` 中的 `"sls"`、`"xufan"` 等裸别名改为 `"bark:sls"`、`"bark:xufan"`；`bark_map.json` 中的键仍是 `"sls"`、`"xufan"`，无需加前缀。裸别名会报告路由错误，其他有效目标仍会继续尝试。支持 `"bark:klee+tg"` 字符串简写，但推荐使用 `["bark:klee", "telegram"]` 数组。
 
 ### Telegram
 
@@ -41,7 +43,7 @@ Telegram 将全部生成的常规 `site_*.png` 作为本地 multipart 媒体组�
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```

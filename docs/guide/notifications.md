@@ -6,17 +6,19 @@ Create local configuration from `config/push_map.example.json` and `config/bark_
 
 ### Player routing
 
-`config/push_map.json` maps player IDs to `telegram`, Bark aliases, `astrbot:<alias>`, `none`, `+tg` strings, or arrays of methods:
+`config/push_map.json` maps player IDs to `telegram`, `bark:<alias>`, `astrbot:<alias>`, `none`, prefixed `+tg` strings, or arrays of methods:
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 Players without an available routing value default to Telegram.
+
+Bark routes must use `bark:<alias>`; AstrBot routes use `astrbot:<alias>`. When upgrading, change bare Bark targets such as `"sls"` and `"xufan"` to `"bark:sls"` and `"bark:xufan"` in `push_map.json`. Keys in `bark_map.json` stay unchanged (`"sls"`, `"xufan"`). Bare aliases are rejected with a routing error; other valid selected targets are still attempted. The string shorthand `"bark:klee+tg"` is supported, but `["bark:klee", "telegram"]` is recommended.
 
 ### Telegram
 
@@ -41,7 +43,7 @@ Select aliases using `astrbot:<alias>` in `config/push_map.json`:
 ```json
 {
   "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
-  "1234567890123456790": ["astrbot:qq_me", "telegram", "klee"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
