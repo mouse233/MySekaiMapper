@@ -31,3 +31,18 @@ func TestEnvMegabytesRejectsInvalidAndOverflow(t *testing.T) {
 		t.Fatalf("overflow value got %d", got)
 	}
 }
+
+func TestSettingsFromRootLoadsAstrBot(t *testing.T) {
+	t.Setenv("MYSK_CONFIG_DIR", "/custom/config")
+	t.Setenv("ASTRBOT_PUSH_URL", " http://astrbot:9966 ")
+	t.Setenv("ASTRBOT_PUSH_TOKEN", "test-token")
+	t.Setenv("ASTRBOT_ALLOW_INSECURE_HTTP", "1")
+	settings := SettingsFromRoot("/repo")
+	if settings.AstrBotMapFile != filepath.Join("/custom/config", "astrbot_map.json") || settings.AstrBotPushURL != "http://astrbot:9966" || settings.AstrBotPushToken != "test-token" || !settings.AstrBotAllowInsecureHTTP {
+		t.Fatal("AstrBot settings not loaded")
+	}
+	t.Setenv("ASTRBOT_ALLOW_INSECURE_HTTP", "")
+	if SettingsFromRoot("/repo").AstrBotAllowInsecureHTTP {
+		t.Fatal("HTTP must be explicitly enabled")
+	}
+}

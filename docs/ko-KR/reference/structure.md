@@ -8,11 +8,12 @@
 ├── internal/
 │   ├── har/                 # Reqable HAR parsing and decompression
 │   ├── mapper/              # AES, MsgPack, resources, and rendering
-│   ├── notify/              # Telegram and Bark delivery
+│   ├── notify/              # Telegram, Bark, and AstrBot dispatch
 │   ├── server/              # Upload and report HTTP endpoints
 │   └── service/             # Queue, storage, and archive pipeline
 ├── assets/                  # Font and resource icons
 ├── config/                  # Local routing templates
+│   ├── astrbot_map.example.json
 │   ├── bark_map.example.json
 │   └── push_map.example.json
 ├── data/                    # Ignored runtime data
@@ -25,4 +26,4 @@
 └── .env.example             # Configuration template
 ```
 
-`data/`, `.env`, `config/bark_map.json` 및 `config/push_map.json`은 비공개 런타임 데이터이며 Git에서 무시됩니다.
+`data/`, `.env`, `config/bark_map.json` 및 `config/push_map.json`, `config/astrbot_map.json`은 비공개 런타임 데이터이며 Git에서 무시됩니다.

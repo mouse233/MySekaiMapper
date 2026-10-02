@@ -6,7 +6,7 @@
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/zh-TW/>
 
-這是一項 Go 服務，可將已加密的 *Project SEKAI* MySekai 存檔轉換為資源採集地圖，並將結果傳送至 Telegram 或 Bark（Day.app）。
+這是一項 Go 服務，可將已加密的 *Project SEKAI* MySekai 存檔轉換為資源採集地圖，並將結果傳送至 Telegram、Bark（Day.app）或 AstrBot（QQ）。
 
 它可搭配 MitM 擷取用戶端或 Reqable 的 **Report Server** 使用：擷取工具上傳 MySekai 存檔後，服務會解密並解析內容、繪製地圖與稀有資源摘要、封存產物，並自動發送通知，無須手動處理。
 

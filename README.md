@@ -4,7 +4,7 @@
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/>
 
-A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram or Bark (Day.app).
+A Go service that turns encrypted *Project SEKAI* MySekai saves into resource-gathering maps and sends the result to Telegram, Bark (Day.app), or AstrBot (QQ).
 
 It works with a MitM capture client or Reqable's **Report Server**: the capture tool uploads a MySekai save, the service decrypts and parses it, renders maps and a rare-resource summary, archives the artifacts, and dispatches notifications without a manual processing step.
 
@@ -34,6 +34,7 @@ Choose the notification path that fits your setup:
 
 - **Path A — Telegram only**: simplest option; no player-routing file or public image server is needed.
 - **Path B — Bark enabled**: configure Bark keys, player routing, and a public static-file server for images.
+- **Path C — AstrBot (QQ)**: configure Push Lite and recipient aliases; see the AstrBot section under Notifications and static files. No public image server is needed.
 
 ### 1. Requirements and build
 
@@ -55,6 +56,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | Yes | 16-byte MySekai AES-128-CBC key and IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram only | Bot credentials and target chat ID from [@BotFather](https://t.me/BotFather) |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | AstrBot only | Push Lite base URL and API token; see notifications below |
 | `BARK_ICON` | Optional | Icon URL included in Bark notifications |
 | `BARK_IMAGE_BASE` | Bark images | Public base URL for archived map images |
 | `FALLBACK_IMAGE_BASE` | Optional | Image-base fallback when `BARK_IMAGE_BASE` is unset |
@@ -93,12 +95,12 @@ Players absent from `config/push_map.json` default to Telegram. Path A does not 
 In addition to the Path A configuration (Telegram may be omitted for Bark-only routes):
 
 1. Create `config/bark_map.json` from `config/bark_map.example.json`, mapping a Bark alias to each device key.
-2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to a Bark alias, `telegram`, `none`, or a combination:
+2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to `bark:<alias>`, `telegram`, `none`, or a combination:
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```
@@ -234,21 +236,61 @@ Create local configuration from `config/push_map.example.json` and `config/bark_
 
 ### Player routing
 
-`config/push_map.json` maps player IDs to `telegram`, Bark aliases, `none`, `+tg` strings, or arrays of methods:
+`config/push_map.json` maps player IDs to `telegram`, `bark:<alias>`, `astrbot:<alias>`, `none`, prefixed `+tg` strings, or arrays of methods:
 
 ```json
 {
   "1234567890123456789": ["telegram"],
-  "1234567890123456790": ["telegram", "klee"],
+  "1234567890123456790": ["telegram", "bark:klee"],
   "1234567890123456791": "none"
 }
 ```
 
 Players without an available routing value default to Telegram.
 
+Bark routes must use `bark:<alias>`; AstrBot routes use `astrbot:<alias>`. When upgrading, change bare Bark targets such as `"sls"` and `"xufan"` to `"bark:sls"` and `"bark:xufan"` in `push_map.json`. Keys in `bark_map.json` stay unchanged (`"sls"`, `"xufan"`). Bare aliases are rejected with a routing error; other valid selected targets are still attempted. The string shorthand `"bark:klee+tg"` is supported, but `["bark:klee", "telegram"]` is recommended.
+
 ### Telegram
 
 Telegram uploads all generated regular `site_*.png` files as a local multipart media group. It requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, but does not require a public image server. Telegram failures do not prevent configured Bark attempts.
+
+### AstrBot Push Lite (QQ)
+
+Install [astrbot_plugin_push_lite](https://github.com/Raven95676/astrbot_plugin_push_lite) in your existing AstrBot instance. For QQ, connect AstrBot through OneBot v11 and configure the plugin's API token and listening port (default `9966`). Create `config/astrbot_map.json` from `config/astrbot_map.example.json`:
+
+```json
+{
+  "qq_me": {"platform_id": "qq_main", "type": "private", "qq": "123456789"},
+  "qq_group": {"platform_id": "qq_main", "type": "group", "qq": "987654321"},
+  "session": {"umo": "qq_main:FriendMessage:123456789"}
+}
+```
+
+`platform_id` is the actual bot/platform instance ID in AstrBot, not necessarily the adapter type `aiocqhttp` or the bot's QQ number. `type` must be `private` or `group`; `qq` is a **string** containing the recipient's QQ number or group number. The notifier constructs `platform_id:FriendMessage:qq` or `platform_id:GroupMessage:qq`. You can confirm the platform ID once with `/sid`; each recipient does not need to run the command. Alternatively, set `umo` alone to an existing full session identifier. Do not combine it with `platform_id`, `type`, or `qq`. See [AstrBot's session documentation](https://docs.astrbot.app/use/command.html#name).
+
+Select aliases using `astrbot:<alias>` in `config/push_map.json`:
+
+```json
+{
+  "1234567890123456789": ["astrbot:qq_me", "astrbot:qq_group"],
+  "1234567890123456790": ["astrbot:qq_me", "telegram", "bark:klee"],
+  "1234567890123456791": "none"
+}
+```
+
+Configure the gateway in `.env`:
+
+```dotenv
+ASTRBOT_PUSH_URL=http://astrbot:9966
+ASTRBOT_PUSH_TOKEN=your-plugin-api-token
+ASTRBOT_ALLOW_INSECURE_HTTP=1
+```
+
+`ASTRBOT_PUSH_URL` is the service **base URL**, without `/send`; reverse-proxy path prefixes are supported. HTTPS is required by default. Enable `ASTRBOT_ALLOW_INSECURE_HTTP=1` only for trusted local/Docker networks. With separate containers, use the AstrBot service name on a shared network; `localhost` refers to the current container. For a host-based service, use its reachable address and mapped plugin port. The notifier sends the token as a Bearer header and does not follow redirects.
+
+Both `serve` and `notify` submit a text summary followed by every regular `site_*.png` as a separate Base64 image request, per recipient. No public image server or shared filesystem is required. Images are limited to 8 MiB each before encoding; allow sufficient request size in your reverse proxy. Duplicate AstrBot aliases in one route are submitted once. A failed target/request does not prevent other selected targets or channels from being attempted.
+
+A successful response means **queued in Push Lite**, not confirmed QQ delivery; logs explicitly say `request queued`. This integration does not use delivery callbacks or automatically retry. The plugin's queue is held in memory, so pending messages can be lost on restart. Check AstrBot's logs for downstream results. Explicitly assign AstrBot routes: players without a routing value still default to Telegram. Keep `.env` and `config/astrbot_map.json` private; both are ignored by Git.
 
 ### Bark
 
@@ -340,11 +382,12 @@ Starts the upload and report HTTP endpoints. Defaults are `0.0.0.0:9478`.
 ├── internal/
 │   ├── har/                 # Reqable HAR parsing and decompression
 │   ├── mapper/              # AES, MsgPack, resources, and rendering
-│   ├── notify/              # Telegram and Bark delivery
+│   ├── notify/              # Telegram, Bark, and AstrBot dispatch
 │   ├── server/              # Upload and report HTTP endpoints
 │   └── service/             # Queue, storage, and archive pipeline
 ├── assets/                  # Font and resource icons
 ├── config/                  # Local routing templates
+│   ├── astrbot_map.example.json
 │   ├── bark_map.example.json
 │   └── push_map.example.json
 ├── data/                    # Ignored runtime data
@@ -357,7 +400,7 @@ Starts the upload and report HTTP endpoints. Defaults are `0.0.0.0:9478`.
 └── .env.example             # Configuration template
 ```
 
-`data/`, `.env`, `config/bark_map.json`, and `config/push_map.json` are private runtime data and are ignored by Git.
+`data/`, `.env`, `config/bark_map.json`, `config/push_map.json`, and `config/astrbot_map.json` are private runtime data and are ignored by Git.
 
 ## Testing
 
@@ -373,7 +416,7 @@ GitHub Actions runs the Go test suite and build for pushes and pull requests.
 
 The active runtime is Go-only. The module follows the standard root layout with `cmd/`, `internal/`, `go.mod`, and `go.sum`; Python source, dependencies, and CI were removed. The archived reference implementation remains in the [`legacy/python`](https://github.com/mouse233/MySekaiMapper/tree/legacy/python) branch and [`python-v0.2.0`](https://github.com/mouse233/MySekaiMapper/tree/python-v0.2.0) tag.
 
-The HTTP endpoints, environment variables, output names, archive layout, and routing-file formats remain compatible. The Go renderer uses a fixed canvas, so its generated PNGs are not guaranteed to be pixel-identical to the former Matplotlib output.
+The HTTP endpoints, environment variables, output names, archive layout, and routing-file formats remain compatible apart from the required `bark:` route prefix. The Go renderer uses a fixed canvas, so its generated PNGs are not guaranteed to be pixel-identical to the former Matplotlib output.
 
 ## Disclaimer
 

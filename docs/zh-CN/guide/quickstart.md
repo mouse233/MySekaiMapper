@@ -27,6 +27,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | 是 | 16 字节的 MySekai AES-128-CBC 密钥和 IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 仅 Telegram | 从 [@BotFather](https://t.me/BotFather) 获取的 Bot 凭据和目标聊天 ID |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | 仅 AstrBot | Push Lite 根地址和 API token，见下方通知配置 |
 | `BARK_ICON` | 可选 | Bark 通知中包含的图标 URL |
 | `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
 | `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |
@@ -65,12 +66,12 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 在路径 A 的配置基础上（仅使用 Bark 的路由可以省略 Telegram）：
 
 1. 从 `config/bark_map.example.json` 创建 `config/bark_map.json`，将 Bark 别名映射到各设备密钥。
-2. 从 `config/push_map.example.json` 创建 `config/push_map.json`，将玩家 ID 映射到 Bark 别名、`telegram`、`none` 或它们的组合：
+2. 从 `config/push_map.example.json` 创建 `config/push_map.json`，将玩家 ID 映射到 `bark:<别名>`、`telegram`、`none` 或它们的组合：
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```

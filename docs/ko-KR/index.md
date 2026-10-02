@@ -6,7 +6,7 @@
 
 📖 **Documentation site**: <https://mouse233.github.io/MySekaiMapper/ko-KR/>
 
-암호화된 *Project SEKAI* MySekai 저장 데이터를 자원 채집 지도으로 변환하고, 결과를 Telegram 또는 Bark(Day.app)로 전송하는 Go 서비스입니다.
+암호화된 *Project SEKAI* MySekai 저장 데이터를 자원 채집 지도으로 변환하고, 결과를 Telegram, Bark(Day.app), AstrBot(QQ)로 전송하는 Go 서비스입니다.
 
 MitM 캡처 클라이언트 또는 Reqable의 **Report Server**와 함께 사용할 수 있습니다. 캡처 도구가 MySekai 저장 데이터를 업로드하면, 서비스가 이를 복호화하고 파싱한 뒤 지도와 희귀 자원 요약을 렌더링하고 결과물을 보관하며, 수동 처리 없이 알림을 전송합니다.
 

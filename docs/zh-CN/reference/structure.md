@@ -13,6 +13,7 @@
 │   └── service/             # 队列、存储与归档流水线
 ├── assets/                  # 字体和资源图标
 ├── config/                  # 本地路由模板
+│   ├── astrbot_map.example.json
 │   ├── bark_map.example.json
 │   └── push_map.example.json
 ├── data/                    # 被忽略的运行时输出
@@ -25,4 +26,4 @@
 └── .env.example             # 配置模板
 ```
 
-`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json` 是私密的运行时数据，会被 Git 忽略。
+`data/`、`.env`、`config/bark_map.json` 和 `config/push_map.json`, `config/astrbot_map.json` 是私密的运行时数据，会被 Git 忽略。
