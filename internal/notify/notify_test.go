@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestResolveMethodMatchesLegacyAndListForms(t *testing.T) {
+func TestResolveMethodRequiresBarkPrefixInStringAndListForms(t *testing.T) {
 	cases := []struct {
 		input        any
 		wantAliases  []string
@@ -22,9 +22,13 @@ func TestResolveMethodMatchesLegacyAndListForms(t *testing.T) {
 		{nil, nil, false},
 		{"none", nil, false},
 		{"telegram", nil, true},
-		{"klee+tg", []string{"klee"}, true},
-		{"dodoco", []string{"dodoco"}, false},
-		{[]any{"telegram", "dodoco"}, []string{"dodoco"}, true},
+		{"bark:klee+tg", []string{"klee"}, true},
+		{"bark:dodoco", []string{"dodoco"}, false},
+		{[]any{"telegram", "bark:dodoco"}, []string{"dodoco"}, true},
+		{[]string{"bark:klee", "telegram"}, []string{"klee"}, true},
+		{"klee", nil, false},
+		{"klee+tg", nil, true},
+		{[]any{"telegram", "dodoco"}, nil, true},
 		{[]string{}, nil, false},
 	}
 	for _, tc := range cases {
@@ -53,6 +57,56 @@ func TestBarkKeyExplicitValueWins(t *testing.T) {
 	}
 }
 
+func TestRoutesRejectUnprefixedAndEmptyAliases(t *testing.T) {
+	for _, route := range []any{"sls", "xufan+tg", "bark:", "astrbot:", []string{"telegram", "sls"}, []any{"bark: ", "astrbot: "}} {
+		bark, astrbot, _, err := resolveRoutes(route)
+		if err == nil || len(bark) != 0 || len(astrbot) != 0 {
+			t.Fatalf("invalid route %#v resolved to %v, %v, %v", route, bark, astrbot, err)
+		}
+	}
+}
+
+func TestNotifyRejectsBareBarkAliasWithoutSuppressingValidChannels(t *testing.T) {
+	dir, config := astrBotFixture(t, []string{"device", "bark:device", "telegram", "astrbot:me"})
+	config.BarkMapFile = filepath.Join(dir, "bark_map.json")
+	writeJSON(t, config.BarkMapFile, map[string]string{"device": "key"})
+	var barkCalls, telegramCalls, astrbotCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/bark/key/"):
+			barkCalls++
+			w.WriteHeader(http.StatusOK)
+		case strings.HasPrefix(r.URL.Path, "/telegram/"):
+			telegramCalls++
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/send":
+			astrbotCalls++
+			queued(w)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	config.BarkAPIBase, config.TelegramAPIBase = server.URL+"/bark", server.URL+"/telegram"
+	config.TelegramBotToken, config.TelegramChatID = "token", "99"
+	config.AllowInsecureHTTP = true
+	config.AstrBotPushURL = server.URL
+	notifier := New(config)
+	err := notifier.Notify(context.Background(), dir, "task", "42", "")
+	if err == nil || !strings.Contains(err.Error(), "bark:<alias>") || barkCalls != 1 || telegramCalls != 1 || astrbotCalls != 1 {
+		t.Fatalf("err=%v Bark=%d Telegram=%d AstrBot=%d", err, barkCalls, telegramCalls, astrbotCalls)
+	}
+	// An explicit bare alias must not silently fall back to Telegram or send Bark.
+	writeJSON(t, config.PushMapFile, map[string]any{"42": "device"})
+	if err := notifier.Notify(context.Background(), dir, "task", "42", ""); err == nil {
+		t.Fatal("bare alias should report a migration error")
+	}
+	if barkCalls != 1 || telegramCalls != 1 || astrbotCalls != 1 {
+		t.Fatal("bare alias unexpectedly dispatched a notification")
+	}
+}
+
 func TestNotifySendsBarkAndTelegramMediaGroup(t *testing.T) {
 	dir := t.TempDir()
 	outputDir := filepath.Join(dir, "output")
@@ -71,7 +125,7 @@ func TestNotifySendsBarkAndTelegramMediaGroup(t *testing.T) {
 	barkMapPath := filepath.Join(dir, "bark_map.json")
 	pushMapPath := filepath.Join(dir, "push_map.json")
 	writeJSON(t, barkMapPath, map[string]string{"device": "device-key"})
-	writeJSON(t, pushMapPath, map[string]any{"42": []string{"telegram", "device"}})
+	writeJSON(t, pushMapPath, map[string]any{"42": []string{"telegram", "bark:device"}})
 
 	var mu sync.Mutex
 	paths := make([]string, 0)
@@ -176,7 +230,7 @@ func TestNotifyContinuesTelegramWhenBarkFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeJSON(t, filepath.Join(dir, "bark_map.json"), map[string]string{"device": "key"})
-	writeJSON(t, filepath.Join(dir, "push_map.json"), map[string]any{"42": []string{"device", "telegram"}})
+	writeJSON(t, filepath.Join(dir, "push_map.json"), map[string]any{"42": []string{"bark:device", "telegram"}})
 
 	var telegramCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

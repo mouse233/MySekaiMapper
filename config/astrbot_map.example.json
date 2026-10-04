@@ -1,0 +1,15 @@
+{
+  "qq_me": {
+    "platform_id": "qq_main",
+    "type": "private",
+    "qq": "123456789"
+  },
+  "qq_group": {
+    "platform_id": "qq_main",
+    "type": "group",
+    "qq": "987654321"
+  },
+  "session": {
+    "umo": "qq_main:FriendMessage:123456789"
+  }
+}

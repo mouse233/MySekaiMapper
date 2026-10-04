@@ -6,6 +6,7 @@ Choose the notification path that fits your setup:
 
 - **Path A — Telegram only**: simplest option; no player-routing file or public image server is needed.
 - **Path B — Bark enabled**: configure Bark keys, player routing, and a public static-file server for images.
+- **Path C — AstrBot (QQ)**: configure Push Lite and recipient aliases; see the AstrBot section under Notifications and static files. No public image server is needed.
 
 ### 1. Requirements and build
 
@@ -27,6 +28,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | --- | --- | --- |
 | `AES_KEY`, `AES_IV` | Yes | 16-byte MySekai AES-128-CBC key and IV |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram only | Bot credentials and target chat ID from [@BotFather](https://t.me/BotFather) |
+| `ASTRBOT_PUSH_URL`, `ASTRBOT_PUSH_TOKEN` | AstrBot only | Push Lite base URL and API token; see notifications below |
 | `BARK_ICON` | Optional | Icon URL included in Bark notifications |
 | `BARK_IMAGE_BASE` | Bark images | Public base URL for archived map images |
 | `FALLBACK_IMAGE_BASE` | Optional | Image-base fallback when `BARK_IMAGE_BASE` is unset |
@@ -65,12 +67,12 @@ Players absent from `config/push_map.json` default to Telegram. Path A does not 
 In addition to the Path A configuration (Telegram may be omitted for Bark-only routes):
 
 1. Create `config/bark_map.json` from `config/bark_map.example.json`, mapping a Bark alias to each device key.
-2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to a Bark alias, `telegram`, `none`, or a combination:
+2. Create `config/push_map.json` from `config/push_map.example.json`, mapping player IDs to `bark:<alias>`, `telegram`, `none`, or a combination:
 
    ```json
    {
-     "1234567890123456789": ["klee"],
-     "1234567890123456790": ["telegram", "klee"],
+     "1234567890123456789": ["bark:klee"],
+     "1234567890123456790": ["telegram", "bark:klee"],
      "1234567890123456791": "none"
    }
    ```
