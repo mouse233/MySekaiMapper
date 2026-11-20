@@ -48,17 +48,69 @@ func TestChunkStoreMergesOutOfOrderAndCleansUp(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(store.Root, "job_1")); err != nil {
 		t.Fatalf("retryable chunk directory missing: %v", err)
 	}
-	if err := store.MarkSubmitted("job_1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := store.Add("job_1", 0, 3, []byte("start-")); err != ErrChunkAlreadySubmitted {
-		t.Fatalf("got %v, want submitted marker", err)
-	}
 	if err := store.Complete("job_1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(store.Root, "job_1")); !os.IsNotExist(err) {
 		t.Fatalf("chunk directory remains after completion: %v", err)
+	}
+}
+
+func TestChunkStoreQuotaSurvivesRestartAndReleasesCapacity(t *testing.T) {
+	root := t.TempDir()
+	open := func() *ChunkStore {
+		t.Helper()
+		store, err := NewChunkStore(root, 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.maxUploads = 2
+		store.maxBytes = 6
+		return store
+	}
+	store := open()
+	if _, _, err := store.Add("started", 0, 2, []byte("1234")); err != nil {
+		t.Fatal(err)
+	}
+
+	store = open()
+	if _, _, err := store.Add("too-large", 0, 2, []byte("123")); err != ErrChunkStoreFull {
+		t.Fatalf("expected byte quota after restart, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "too-large")); !os.IsNotExist(err) {
+		t.Fatalf("rejected upload created a directory: %v", err)
+	}
+	if _, _, err := store.Add("second", 0, 2, []byte("12")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Add("third", 0, 2, nil); err != ErrChunkStoreFull {
+		t.Fatalf("expected upload count quota, got %v", err)
+	}
+	if _, _, err := store.Add("second", 1, 2, []byte("3")); err != ErrChunkStoreFull {
+		t.Fatalf("expected byte quota for an existing upload, got %v", err)
+	}
+	if _, _, err := store.Add("started", 0, 2, []byte("1")); err != nil {
+		t.Fatalf("replace a larger chunk while full: %v", err)
+	}
+	if merged, complete, err := store.Add("second", 1, 2, []byte("3")); err != nil || !complete || string(merged) != "123" {
+		t.Fatalf("expected 123 after replacement, got %q complete=%v err=%v", merged, complete, err)
+	}
+	if err := store.Complete("second"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Add("third", 0, 2, []byte("12345")); err != nil {
+		t.Fatalf("complete did not release quota: %v", err)
+	}
+	now := time.Now()
+	expired := now.Add(-StaleUploadAge - time.Minute)
+	if err := os.Chtimes(filepath.Join(root, "third"), expired, expired); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PruneStale(now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Add("fresh", 0, 2, []byte("12345")); err != nil {
+		t.Fatalf("pruning did not release quota: %v", err)
 	}
 }
 
@@ -116,12 +168,8 @@ func TestAsyncSubmitterQueuesAndDrainsJobs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, err := os.ReadDir(store.RawDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 3 {
-		t.Fatalf("got raw files %v, want all accepted jobs", entries)
+	if names := regularFileNames(t, store.PendingDir); len(names) != 3 {
+		t.Fatalf("got pending raw files %v, want all accepted jobs", names)
 	}
 	close(release)
 	for index := 0; index < 3; index++ {
@@ -135,6 +183,27 @@ func TestAsyncSubmitterQueuesAndDrainsJobs(t *testing.T) {
 	if err := submitter.Submit(context.Background(), []byte("late"), "42", "task4"); err != ErrSubmitterClosed {
 		t.Fatalf("got %v, want closed submitter", err)
 	}
+	if names := regularFileNames(t, store.PendingDir); len(names) != 0 {
+		t.Fatalf("processed archives left pending: %v", names)
+	}
+	if names := regularFileNames(t, store.RawDir); len(names) != 3 {
+		t.Fatalf("got processed raw files %v, want 3 in the raw directory", names)
+	}
+}
+
+func regularFileNames(t *testing.T, directory string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Type().IsRegular() {
+			names = append(names, entry.Name())
+		}
+	}
+	return names
 }
 
 type panicThenProcessor struct {
@@ -174,6 +243,296 @@ func TestAsyncSubmitterWorkerSurvivesProcessorPanic(t *testing.T) {
 		t.Fatal("worker did not continue after panic")
 	}
 	submitter.Close()
+	failed := regularFileNames(t, store.FailedDir)
+	if len(failed) != 1 || !strings.Contains(failed[0], "panic1") {
+		t.Fatalf("failed raw files=%v, want the panicking job", failed)
+	}
+	processed := regularFileNames(t, store.RawDir)
+	if len(processed) != 1 || !strings.Contains(processed[0], "panic2") {
+		t.Fatalf("processed raw files=%v, want the successful job", processed)
+	}
+}
+
+type recordingProcessor struct {
+	mu   sync.Mutex
+	jobs []string
+	err  error
+}
+
+func (p *recordingProcessor) Process(_ context.Context, rawPath, userID, taskID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, err := os.Stat(rawPath); err != nil {
+		return err
+	}
+	p.jobs = append(p.jobs, userID+"/"+taskID)
+	return p.err
+}
+
+func TestAsyncSubmitterRecoversPendingArchives(t *testing.T) {
+	store, err := NewStore(testSettings(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Archives accepted by a previous run that stopped before processing them.
+	for _, task := range []string{"old1", "old2"} {
+		if _, err := store.SaveRaw([]byte(task), "42", task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A processed archive from the old layout must not be reprocessed.
+	if err := os.WriteFile(filepath.Join(store.RawDir, "mysekai_42_legacy.bin"), []byte("legacy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	processor := &recordingProcessor{}
+	submitter := &AsyncSubmitter{Store: store, Processor: processor, Workers: 1}
+	recovered, err := submitter.Recover()
+	if err != nil || recovered != 2 {
+		t.Fatalf("recovered=%d err=%v", recovered, err)
+	}
+	submitter.Close()
+	processor.mu.Lock()
+	jobs := append([]string(nil), processor.jobs...)
+	processor.mu.Unlock()
+	if len(jobs) != 2 || !containsString(jobs, "42/old1") || !containsString(jobs, "42/old2") {
+		t.Fatalf("processed jobs=%v", jobs)
+	}
+	if names := regularFileNames(t, store.PendingDir); len(names) != 0 {
+		t.Fatalf("recovered archives left pending: %v", names)
+	}
+}
+
+func TestMissingAESLeavesAcceptedUploadRecoverable(t *testing.T) {
+	settings := testSettings(t)
+	store, err := NewStore(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := msgpack.Marshal(map[string]any{"updatedResources": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := store.SaveUpload(encryptForServiceTest(t, plain), "42", "accepted")
+	if err != nil || path == "" {
+		t.Fatalf("save upload path=%q err=%v", path, err)
+	}
+	t.Setenv("AES_KEY", "")
+	t.Setenv("AES_IV", "")
+	firstBoot := &AsyncSubmitter{Store: store, Processor: NewGenerationProcessor(settings, store, nil)}
+	count, err := firstBoot.Recover()
+	firstBoot.Close()
+	if err != nil || count != 1 {
+		t.Fatalf("initial recovery count=%d err=%v", count, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("missing AES configuration removed a pending upload: %v", err)
+	}
+
+	t.Setenv("AES_KEY", "0123456789abcdef")
+	t.Setenv("AES_IV", "fedcba9876543210")
+	restartedStore, err := NewStore(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor := &recordingProcessor{}
+	secondBoot := &AsyncSubmitter{Store: restartedStore, Processor: processor}
+	count, err = secondBoot.Recover()
+	secondBoot.Close()
+	if err != nil || count != 1 {
+		t.Fatalf("second recovery count=%d err=%v", count, err)
+	}
+	if len(processor.jobs) != 1 || processor.jobs[0] != "42/accepted" {
+		t.Fatalf("processed jobs=%v", processor.jobs)
+	}
+}
+
+func TestUploadQueueRecoversOnlyPublishedUploadsAndRetainsReceipts(t *testing.T) {
+	settings := testSettings(t)
+	store, err := NewStore(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staging, err := os.MkdirTemp(store.uploadQueueDir, uploadStagingPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(staging, "mysekai_42_unpublished.bin"), []byte("unfinished"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := store.SaveUpload([]byte("accepted"), "42", "published")
+	if err != nil || path == "" {
+		t.Fatalf("publish path=%q err=%v", path, err)
+	}
+	if duplicate, err := store.SaveUpload([]byte("retry"), "99", "published"); err != nil || duplicate != "" {
+		t.Fatalf("duplicate upload saved path=%q err=%v", duplicate, err)
+	}
+
+	expired := time.Now().Add(-SubmittedRetention - time.Minute)
+	for _, directory := range []string{staging, filepath.Dir(path)} {
+		if err := os.Chtimes(directory, expired, expired); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err = NewStore(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := store.PendingRaw()
+	if err != nil || len(pending) != 1 || pending[0].Path != path {
+		t.Fatalf("recovered pending=%v err=%v", pending, err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("expired staging directory remains: %v", err)
+	}
+	if err := store.FinishRaw(path, false); err != nil {
+		t.Fatal(err)
+	}
+	if submitted, err := store.UploadSubmitted("published"); err != nil || !submitted {
+		t.Fatalf("finalizing failed archive lost receipt: submitted=%v err=%v", submitted, err)
+	}
+	receipt := filepath.Dir(path)
+	if err := os.Chtimes(receipt, expired, expired); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PendingRaw(); err != nil {
+		t.Fatal(err)
+	}
+	if submitted, err := store.UploadSubmitted("published"); err != nil || submitted {
+		t.Fatalf("expired receipt retained: submitted=%v err=%v", submitted, err)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFailedRawArchivesAreBounded(t *testing.T) {
+	store, err := NewStore(testSettings(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < MaxFailedRawArchives+5; index++ {
+		path, err := store.SaveRaw([]byte("bad"), "42", "bad")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishRaw(path, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if names := regularFileNames(t, store.FailedDir); len(names) != MaxFailedRawArchives {
+		t.Fatalf("got %d failed archives, want %d", len(names), MaxFailedRawArchives)
+	}
+	if names := regularFileNames(t, store.PendingDir); len(names) != 0 {
+		t.Fatalf("failed archives left pending: %v", names)
+	}
+}
+
+func TestFinishRawRejectsPathsOutsidePending(t *testing.T) {
+	store, err := NewStore(testSettings(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(store.RawDir, "mysekai_42_x.bin")
+	if err := os.WriteFile(outside, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FinishRaw(outside, true); err == nil {
+		t.Fatal("expected an error for a path outside the pending directory")
+	}
+}
+
+func TestParseRawName(t *testing.T) {
+	longTask := strings.Repeat("a", 64)
+	cases := []struct {
+		name   string
+		user   string
+		task   string
+		wantOK bool
+	}{
+		{"mysekai_42_task1.bin", "42", "task1", true},
+		{"mysekai_unknown_a_b.bin", "unknown", "a_b", true},
+		{"mysekai_42_" + longTask + "_abcd1234.bin", "42", longTask, true},
+		{"mysekai_x1_task.bin", "", "", false},
+		{"other.bin", "", "", false},
+		{"mysekai_42_task.txt", "", "", false},
+	}
+	for _, tc := range cases {
+		user, task, ok := parseRawName(tc.name)
+		if ok != tc.wantOK || user != tc.user || task != tc.task {
+			t.Errorf("parseRawName(%q)=(%q,%q,%v), want (%q,%q,%v)", tc.name, user, task, ok, tc.user, tc.task, tc.wantOK)
+		}
+	}
+}
+
+func TestChunkStoreHonorsLegacySubmittedMarker(t *testing.T) {
+	store, err := NewChunkStore(t.TempDir(), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, complete, err := store.Add("done", 0, 1, []byte("data")); err != nil || !complete {
+		t.Fatalf("complete=%v err=%v", complete, err)
+	}
+	writeLegacySubmittedMarker(t, store, "done")
+	if err := store.Complete("done"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Add("done", 0, 1, []byte("data")); err != ErrChunkAlreadySubmitted {
+		t.Fatalf("got %v, want submitted marker after cleanup", err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Root, "done")); !os.IsNotExist(err) {
+		t.Fatalf("retry recreated the chunk directory: %v", err)
+	}
+}
+
+func TestChunkStorePrunesStaleUploadsAndMarkers(t *testing.T) {
+	store, err := NewChunkStore(t.TempDir(), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"stale", "fresh"} {
+		if _, _, err := store.Add(id, 0, 2, []byte("part")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeLegacySubmittedMarker(t, store, "old")
+	writeLegacySubmittedMarker(t, store, "recent")
+	now := time.Now()
+	staleTime := now.Add(-StaleUploadAge - time.Minute)
+	if err := os.Chtimes(filepath.Join(store.Root, "stale"), staleTime, staleTime); err != nil {
+		t.Fatal(err)
+	}
+	expired := now.Add(-SubmittedRetention - time.Minute)
+	if err := os.Chtimes(filepath.Join(store.Root, ".submitted", "old"), expired, expired); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PruneStale(now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Root, "stale")); !os.IsNotExist(err) {
+		t.Fatalf("stale upload remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Root, "fresh", "chunk_0")); err != nil {
+		t.Fatalf("fresh upload was pruned: %v", err)
+	}
+	if _, _, err := store.Add("old", 0, 1, []byte("data")); err != nil {
+		t.Fatalf("expired marker still blocks the upload ID: %v", err)
+	}
+	if _, _, err := store.Add("recent", 0, 1, []byte("data")); err != ErrChunkAlreadySubmitted {
+		t.Fatalf("got %v, want recent marker kept", err)
+	}
+}
+
+func writeLegacySubmittedMarker(t *testing.T, store *ChunkStore, id string) {
+	t.Helper()
+	if err := atomicWrite(store.submittedPath(id), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestStoreKeepsSameTaskRawArchivesDistinct(t *testing.T) {

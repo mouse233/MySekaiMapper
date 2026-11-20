@@ -33,6 +33,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark 画像 | アーカイブしたマップ画像の公開ベース URL |
 | `FALLBACK_IMAGE_BASE` | 任意 | `BARK_IMAGE_BASE` 未設定時の画像ベース URL |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 任意 | Reqable レポートエンドポイントの設定 |
+| `UPLOAD_TOKEN` | 任意 | 設定すると、`/uploadMySekai` は一致する `X-Upload-Token` ヘッダーを要求します |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 任意 | デフォルトのリポジトリディレクトリを上書き |
 
 ### 3. 経路 A — Telegram のみ

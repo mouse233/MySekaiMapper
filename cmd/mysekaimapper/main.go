@@ -178,6 +178,10 @@ func newNotifier(settings service.Settings) *notifyservice.Notifier {
 	})
 }
 
+// shutdownDrainTimeout bounds how long shutdown waits for queued jobs. Jobs
+// still pending afterwards stay on disk and are recovered on the next start.
+const shutdownDrainTimeout = 20 * time.Second
+
 func runServe(root string, args []string) {
 	flags := flag.NewFlagSet("serve", flag.ExitOnError)
 	host := flags.String("host", "0.0.0.0", "bind host")
@@ -203,6 +207,16 @@ func runServe(root string, args []string) {
 	chunks, err := service.NewChunkStore(filepath.Join(settings.TmpDir, "uploads"), mapper.MaxArchiveSize)
 	if err != nil {
 		fatal(err)
+	}
+	if err := chunks.PruneStale(time.Now()); err != nil {
+		log.Printf("[UPLOAD] stale upload cleanup failed: %v", err)
+	}
+	// Resume archives accepted by a previous run that stopped before
+	// processing them (crash, forced stop, or shutdown timeout).
+	if _, _, err := mapper.AESParams(); err != nil {
+		log.Printf("[QUEUE] pending archive recovery deferred: %v", err)
+	} else if _, err := submitter.Recover(); err != nil {
+		log.Printf("[QUEUE] could not recover pending archives: %v", err)
 	}
 	handler, err := httpserver.New(httpserver.ConfigFromSettings(settings), chunks, submitter)
 	if err != nil {
@@ -235,7 +249,11 @@ func runServe(root string, args []string) {
 		if err := server.Shutdown(shutdownContext); err != nil {
 			log.Printf("HTTP shutdown failed: %v", err)
 		}
-		submitter.Close()
+		drainContext, cancelDrain := context.WithTimeout(context.Background(), shutdownDrainTimeout)
+		defer cancelDrain()
+		if err := submitter.CloseContext(drainContext); err != nil {
+			log.Printf("[SHUTDOWN] stopped before all jobs finished; unfinished archives resume on next start")
+		}
 		close(shutdownDone)
 	}()
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -33,6 +33,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark 이미지 사용 시 | 보관된 지도 이미지의 공개 기본 URL |
 | `FALLBACK_IMAGE_BASE` | 선택 사항 | `BARK_IMAGE_BASE`가 설정되지 않았을 때 사용할 이미지 기본 URL |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 선택 사항 | Reqable 보고서 엔드포인트 설정 |
+| `UPLOAD_TOKEN` | 선택 사항 | 설정하면 `/uploadMySekai`에 일치하는 `X-Upload-Token` 헤더가 필요합니다 |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 선택 사항 | 기본 저장소 디렉터리 재정의 |
 
 ### 3. 경로 A — Telegram만 사용

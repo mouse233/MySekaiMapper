@@ -62,6 +62,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
 | `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 可选 | Reqable 上报端点设置 |
+| `UPLOAD_TOKEN` | 可选 | 设置后，`/uploadMySekai` 要求请求头 `X-Upload-Token` 与之匹配 |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 可选 | 覆盖仓库默认目录 |
 
 ### 3. 路径 A — 仅使用 Telegram
@@ -177,6 +178,7 @@ bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 | `X-Chunk-Index` | 是 | 从零开始的分片序号 |
 | `X-Total-Chunks` | 是 | 分片总数，范围为 1 到 10 |
 | `X-Original-Url` | 否 | 游戏原始 URL；`/user/<id>` 用于提供玩家路由 |
+| `X-Upload-Token` | 设置 `UPLOAD_TOKEN` 时必填 | 必须等于 `UPLOAD_TOKEN`，否则返回 `401 Unauthorized` |
 | `X-Script-Version` | 否 | 为兼容抓包客户端而接受，服务会忽略 |
 
 加密存档、每个分片和合并后的上传均限制为 1 MiB。成功接收后返回纯文本 `OK`；绘制和通知会在后台继续进行。
@@ -217,6 +219,8 @@ rm -f /tmp/ms_chunk_*
 ```
 
 常见响应包括：成功接收时为 `200 OK`，标识符或分片范围无效时为 `400 Bad Request`，超过大小限制时为 `413 Payload Too Large`，缺少必填请求头或其值不是整数时为 `422 Unprocessable Entity`。
+
+合并后无法解密为 MySekai 存档的上传会返回 `422 Unprocessable Entity`，且不会落盘。已接收的存档在处理前保存在 `data/raw_mysekai/pending/`，服务重启后会自动继续处理；处理成功后移到 `data/raw_mysekai/`，失败的移到 `data/raw_mysekai/failed/`（只保留最近 20 个）。未传完的分片上传闲置一小时后会被清理。
 
 ## Reqable 上报服务器
 

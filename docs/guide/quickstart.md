@@ -33,6 +33,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark images | Public base URL for archived map images |
 | `FALLBACK_IMAGE_BASE` | Optional | Image-base fallback when `BARK_IMAGE_BASE` is unset |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | Optional | Reqable report-endpoint settings |
+| `UPLOAD_TOKEN` | Optional | When set, `/uploadMySekai` requires a matching `X-Upload-Token` header |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | Optional | Override the default repository directories |
 
 ### 3. Path A — Telegram only

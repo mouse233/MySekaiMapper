@@ -47,6 +47,14 @@ func (s *recordingSubmitter) Submit(_ context.Context, data []byte, userID, task
 	return nil
 }
 
+func (s *recordingSubmitter) SubmitUpload(ctx context.Context, data []byte, userID, taskID string) error {
+	return s.Submit(ctx, data, userID, taskID)
+}
+
+func (s *recordingSubmitter) UploadSubmitted(string) (bool, error) {
+	return false, nil
+}
+
 func (s *recordingSubmitter) snapshot() []submittedArchive {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,9 +99,12 @@ func TestNewRejectsReportPathCollision(t *testing.T) {
 }
 
 func TestChunkUploadMergesAndSubmits(t *testing.T) {
+	setTestAESKeys(t)
+	archive := validEncryptedArchive(t)
 	submitter := &recordingSubmitter{}
 	handler := newTestHandler(t, baseConfig(), submitter)
-	parts := [][]byte{[]byte("part-0"), []byte("part-1"), []byte("part-2")}
+	third := len(archive) / 3
+	parts := [][]byte{archive[:third], archive[third : 2*third], archive[2*third:]}
 	for index, part := range parts {
 		request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewReader(part))
 		request.Header.Set("X-Upload-Id", "regression01")
@@ -107,12 +118,14 @@ func TestChunkUploadMergesAndSubmits(t *testing.T) {
 		}
 	}
 	items := submitter.snapshot()
-	if len(items) != 1 || string(items[0].data) != "part-0part-1part-2" || items[0].userID != "888" || items[0].taskID != "regression01" {
+	if len(items) != 1 || !bytes.Equal(items[0].data, archive) || items[0].userID != "888" || items[0].taskID != "regression01" {
 		t.Fatalf("submissions=%#v", items)
 	}
 }
 
 func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
+	setTestAESKeys(t)
+	archive := validEncryptedArchive(t)
 	submitter := &recordingSubmitter{}
 	handler := newTestHandler(t, baseConfig(), submitter)
 	var messages []string
@@ -120,7 +133,7 @@ func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
 		messages = append(messages, fmt.Sprintf(format, args...))
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewBufferString("archive"))
+	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewReader(archive))
 	request.Header.Set("X-Upload-Id", "logtask01")
 	request.Header.Set("X-Chunk-Index", "0")
 	request.Header.Set("X-Total-Chunks", "1")
@@ -133,8 +146,8 @@ func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
 
 	joined := strings.Join(messages, "\n")
 	for _, expected := range []string{
-		"[UPLOAD] received task=logtask01 player_id=888 chunk=1/1 bytes=7",
-		"[UPLOAD] accepted task=logtask01 player_id=888 bytes=7",
+		fmt.Sprintf("[UPLOAD] received task=logtask01 player_id=888 chunk=1/1 bytes=%d", len(archive)),
+		fmt.Sprintf("[UPLOAD] accepted task=logtask01 player_id=888 bytes=%d", len(archive)),
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("logs=%q, want %q", joined, expected)
@@ -146,6 +159,10 @@ func TestChunkUploadLogsLifecycleWithoutOriginalURL(t *testing.T) {
 }
 
 func TestChunkUploadRetainsCompletedPartsWhenSubmitFails(t *testing.T) {
+	setTestAESKeys(t)
+	archive := validEncryptedArchive(t)
+	half := len(archive) / 2
+	left, right := archive[:half], archive[half:]
 	config := baseConfig()
 	chunks, err := service.NewChunkStore(t.TempDir(), config.MaxTotalSize)
 	if err != nil {
@@ -156,8 +173,8 @@ func TestChunkUploadRetainsCompletedPartsWhenSubmitFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, body := range []string{"left", "right"} {
-		request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewBufferString(body))
+	for index, body := range [][]byte{left, right} {
+		request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewReader(body))
 		request.Header.Set("X-Upload-Id", "retryable")
 		request.Header.Set("X-Chunk-Index", string(rune('0'+index)))
 		request.Header.Set("X-Total-Chunks", "2")
@@ -174,7 +191,7 @@ func TestChunkUploadRetainsCompletedPartsWhenSubmitFails(t *testing.T) {
 		t.Fatalf("first chunk not retained: %v", err)
 	}
 	submitter.err = nil
-	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewBufferString("right"))
+	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewReader(right))
 	request.Header.Set("X-Upload-Id", "retryable")
 	request.Header.Set("X-Chunk-Index", "1")
 	request.Header.Set("X-Total-Chunks", "2")
@@ -184,12 +201,195 @@ func TestChunkUploadRetainsCompletedPartsWhenSubmitFails(t *testing.T) {
 		t.Fatalf("retry status=%d body=%q", response.Code, response.Body.String())
 	}
 	items := submitter.snapshot()
-	if len(items) != 1 || string(items[0].data) != "leftright" {
+	if len(items) != 1 || !bytes.Equal(items[0].data, archive) {
 		t.Fatalf("submissions=%#v", items)
 	}
 	if _, err := os.Stat(filepath.Join(chunks.Root, "retryable")); !os.IsNotExist(err) {
 		t.Fatalf("completed chunks remain: %v", err)
 	}
+}
+
+func uploadRequest(body []byte, uploadID string, index, total int) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/uploadMySekai", bytes.NewReader(body))
+	request.Header.Set("X-Upload-Id", uploadID)
+	request.Header.Set("X-Chunk-Index", fmt.Sprint(index))
+	request.Header.Set("X-Total-Chunks", fmt.Sprint(total))
+	request.Header.Set("X-Original-Url", "https://example.test/user/888/mysekai")
+	return request
+}
+
+func TestChunkUploadRejectsNonArchiveWithoutSubmitting(t *testing.T) {
+	setTestAESKeys(t)
+	config := baseConfig()
+	chunks, err := service.NewChunkStore(t.TempDir(), config.MaxTotalSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitter := &recordingSubmitter{}
+	handler, err := New(config, chunks, submitter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 32 bytes: a valid AES block length that does not decrypt to an archive.
+	response := httptest.NewRecorder()
+	handler.Routes().ServeHTTP(response, uploadRequest(bytes.Repeat([]byte("x"), 32), "garbage01", 0, 1))
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+	if items := submitter.snapshot(); len(items) != 0 {
+		t.Fatalf("non-archive was submitted: %#v", items)
+	}
+	if _, err := os.Stat(filepath.Join(chunks.Root, "garbage01")); !os.IsNotExist(err) {
+		t.Fatalf("rejected chunks remain: %v", err)
+	}
+}
+
+func TestChunkUploadKeepsChunksWhenAESKeysMissing(t *testing.T) {
+	t.Setenv("AES_KEY", "")
+	t.Setenv("AES_IV", "")
+	config := baseConfig()
+	chunks, err := service.NewChunkStore(t.TempDir(), config.MaxTotalSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitter := &recordingSubmitter{}
+	handler, err := New(config, chunks, submitter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.Routes().ServeHTTP(response, uploadRequest(bytes.Repeat([]byte("x"), 32), "nokeys01", 0, 1))
+	if response.Code != http.StatusInternalServerError || len(submitter.snapshot()) != 0 {
+		t.Fatalf("status=%d submissions=%#v", response.Code, submitter.snapshot())
+	}
+	if _, err := os.Stat(filepath.Join(chunks.Root, "nokeys01", "chunk_0")); err != nil {
+		t.Fatalf("chunk should be kept for a retry after configuration: %v", err)
+	}
+}
+
+func TestChunkUploadRequiresConfiguredToken(t *testing.T) {
+	setTestAESKeys(t)
+	archive := validEncryptedArchive(t)
+	config := baseConfig()
+	config.UploadToken = "upload-secret"
+	submitter := &recordingSubmitter{}
+	handler := newTestHandler(t, config, submitter)
+
+	for name, token := range map[string]string{"missing": "", "wrong": "nope"} {
+		request := uploadRequest(archive, "token01", 0, 1)
+		if token != "" {
+			request.Header.Set("X-Upload-Token", token)
+		}
+		response := httptest.NewRecorder()
+		handler.Routes().ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s token: status=%d", name, response.Code)
+		}
+	}
+	if items := submitter.snapshot(); len(items) != 0 {
+		t.Fatalf("unauthenticated upload was submitted: %#v", items)
+	}
+
+	request := uploadRequest(archive, "token01", 0, 1)
+	request.Header.Set("X-Upload-Token", "upload-secret")
+	response := httptest.NewRecorder()
+	handler.Routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || len(submitter.snapshot()) != 1 {
+		t.Fatalf("authorized upload: status=%d submissions=%#v", response.Code, submitter.snapshot())
+	}
+}
+
+func TestChunkUploadRetryAfterSuccessIsNotProcessedTwice(t *testing.T) {
+	setTestAESKeys(t)
+	archive := validEncryptedArchive(t)
+	config := baseConfig()
+	half := len(archive) / 2
+	cases := []struct {
+		name   string
+		id     string
+		chunks [][]byte
+	}{
+		{"single chunk", "retry-single", [][]byte{archive}},
+		{"multiple chunks", "retry-multi", [][]byte{archive[:half], archive[half:]}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("MYSK_DATA_DIR", root)
+			settings := service.SettingsFromRoot(root)
+			chunkDir := filepath.Join(root, "uploads")
+			var jobs int
+			processor := testUploadProcessor(func(context.Context, string, string, string) error {
+				jobs++
+				return nil
+			})
+			open := func(skipCleanup bool) (*Handler, *service.AsyncSubmitter) {
+				t.Helper()
+				store, err := service.NewStore(settings)
+				if err != nil {
+					t.Fatal(err)
+				}
+				chunks, err := service.NewChunkStore(chunkDir, config.MaxTotalSize)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var uploads chunkAdder = chunks
+				if skipCleanup {
+					uploads = cleanupFailingChunks{ChunkStore: chunks}
+				}
+				submitter := &service.AsyncSubmitter{Store: store, Processor: processor}
+				handler, err := New(config, uploads, submitter)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(submitter.Close)
+				return handler, submitter
+			}
+
+			handler, first := open(true)
+			total := len(tc.chunks)
+			for index, chunk := range tc.chunks {
+				response := httptest.NewRecorder()
+				handler.Routes().ServeHTTP(response, uploadRequest(chunk, tc.id, index, total))
+				if response.Code != http.StatusOK {
+					t.Fatalf("chunk %d status=%d", index, response.Code)
+				}
+			}
+			first.Close()
+			if _, err := os.Stat(filepath.Join(chunkDir, tc.id)); err != nil {
+				t.Fatalf("failed cleanup did not leave chunks for retry: %v", err)
+			}
+
+			// The client did not receive the final response and retries after a restart.
+			handler, restarted := open(false)
+			response := httptest.NewRecorder()
+			handler.Routes().ServeHTTP(response, uploadRequest(tc.chunks[total-1], tc.id, total-1, total))
+			if response.Code != http.StatusOK {
+				t.Fatalf("retry status=%d body=%q", response.Code, response.Body.String())
+			}
+			restarted.Close()
+			if jobs != 1 {
+				t.Fatalf("processed %d jobs, want 1", jobs)
+			}
+			if _, err := os.Stat(filepath.Join(chunkDir, tc.id)); !os.IsNotExist(err) {
+				t.Fatalf("retry left an orphan chunk directory: %v", err)
+			}
+		})
+	}
+}
+
+type testUploadProcessor func(context.Context, string, string, string) error
+
+func (process testUploadProcessor) Process(ctx context.Context, path, userID, taskID string) error {
+	return process(ctx, path, userID, taskID)
+}
+
+type cleanupFailingChunks struct {
+	*service.ChunkStore
+}
+
+func (cleanupFailingChunks) Complete(string) error {
+	return errors.New("temporary cleanup failure")
 }
 
 func TestChunkUploadRejectsBadParametersAndSize(t *testing.T) {
@@ -379,6 +579,12 @@ func TestUserIDFromURL(t *testing.T) {
 	if got := UserIDFromURL("https://example.test/user/not-a-number"); got != "unknown" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+func setTestAESKeys(t *testing.T) {
+	t.Helper()
+	t.Setenv("AES_KEY", "0123456789abcdef")
+	t.Setenv("AES_IV", "fedcba9876543210")
 }
 
 func validEncryptedArchive(t *testing.T) []byte {

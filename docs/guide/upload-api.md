@@ -10,6 +10,7 @@
 | `X-Chunk-Index` | Yes | Zero-based chunk index |
 | `X-Total-Chunks` | Yes | Total chunk count, from 1 through 10 |
 | `X-Original-Url` | No | Original game URL; `/user/<id>` supplies the player route |
+| `X-Upload-Token` | When `UPLOAD_TOKEN` is set | Must equal `UPLOAD_TOKEN`; otherwise `401 Unauthorized` |
 | `X-Script-Version` | No | Accepted for capture-client compatibility and ignored by the service |
 
 The encrypted archive, each chunk, and the merged upload are limited to 1 MiB. A successfully accepted request returns plain-text `OK`; rendering and notification continue in the background.
@@ -50,3 +51,5 @@ rm -f /tmp/ms_chunk_*
 ```
 
 Common responses are `200 OK` for an accepted upload, `400 Bad Request` for invalid identifiers or chunk ranges, `413 Payload Too Large` for a size limit, and `422 Unprocessable Entity` for missing or non-integer required upload headers.
+
+A merged upload that does not decrypt to a MySekai archive is rejected with `422 Unprocessable Entity` and is not stored. Accepted archives wait in `data/raw_mysekai/pending/` until processed and are resumed automatically after a restart; they then move to `data/raw_mysekai/`, or to `data/raw_mysekai/failed/` (which keeps the latest 20). Incomplete chunk uploads are removed after one idle hour.

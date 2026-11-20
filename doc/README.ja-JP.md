@@ -62,6 +62,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark 画像 | アーカイブしたマップ画像の公開ベース URL |
 | `FALLBACK_IMAGE_BASE` | 任意 | `BARK_IMAGE_BASE` 未設定時の画像ベース URL |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 任意 | Reqable レポートエンドポイントの設定 |
+| `UPLOAD_TOKEN` | 任意 | 設定すると、`/uploadMySekai` は一致する `X-Upload-Token` ヘッダーを要求します |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 任意 | デフォルトのリポジトリディレクトリを上書き |
 
 ### 3. 経路 A — Telegram のみ
@@ -177,6 +178,7 @@ bin/mysekaimapper serve --host 0.0.0.0 --port 9478
 | `X-Chunk-Index` | はい | 0 始まりのチャンク番号 |
 | `X-Total-Chunks` | はい | 1～10 の総チャンク数 |
 | `X-Original-Url` | いいえ | 元のゲーム URL。`/user/<id>` がプレイヤールートを提供します |
+| `X-Upload-Token` | `UPLOAD_TOKEN` 設定時は必須 | `UPLOAD_TOKEN` と一致する必要があり、一致しない場合は `401 Unauthorized` |
 | `X-Script-Version` | いいえ | キャプチャクライアントとの互換性のため受け付け、サービスでは無視します |
 
 暗号化アーカイブ、各チャンク、および結合済みアップロードはいずれも 1 MiB に制限されます。リクエストが正常に受理されるとプレーンテキストの `OK` が返され、描画と通知はバックグラウンドで続行されます。
@@ -217,6 +219,8 @@ rm -f /tmp/ms_chunk_*
 ```
 
 一般的なレスポンスは、受理済みアップロードの `200 OK`、無効な識別子またはチャンク範囲の `400 Bad Request`、サイズ制限超過の `413 Payload Too Large`、必須アップロードヘッダーの欠落または非整数値の `422 Unprocessable Entity` です。
+
+結合後に MySekai アーカイブとして復号できないアップロードは `422 Unprocessable Entity` で拒否され、保存されません。受理したアーカイブは処理されるまで `data/raw_mysekai/pending/` に置かれ、再起動後は自動的に処理が再開されます。その後、成功したものは `data/raw_mysekai/` に、失敗したものは `data/raw_mysekai/failed/`（最新 20 件のみ保持）に移動します。未完了のチャンクアップロードは 1 時間操作がないと削除されます。
 
 ## Reqable Report Server
 

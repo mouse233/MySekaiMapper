@@ -27,6 +27,7 @@ type Settings struct {
 	ReportPath    string
 	ReportMaxSize int64
 	ReportToken   string
+	UploadToken   string
 
 	TelegramBotToken         string
 	TelegramChatID           string
@@ -67,6 +68,7 @@ func SettingsFromRoot(root string) Settings {
 		ReportPath:    reportPath,
 		ReportMaxSize: envMegabytes("REPORT_MAX_SIZE", 1),
 		ReportToken:   os.Getenv("REPORT_TOKEN"),
+		UploadToken:   os.Getenv("UPLOAD_TOKEN"),
 
 		TelegramBotToken:         os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramChatID:           os.Getenv("TELEGRAM_CHAT_ID"),

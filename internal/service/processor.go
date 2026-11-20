@@ -145,6 +145,22 @@ type AsyncSubmitter struct {
 }
 
 func (s *AsyncSubmitter) Submit(_ context.Context, data []byte, userID, taskID string) error {
+	return s.submit(data, userID, taskID, s.Store.SaveRaw)
+}
+
+// SubmitUpload accepts a chunk upload at most once within the receipt lifetime.
+func (s *AsyncSubmitter) SubmitUpload(_ context.Context, data []byte, userID, uploadID string) error {
+	return s.submit(data, userID, uploadID, s.Store.SaveUpload)
+}
+
+func (s *AsyncSubmitter) UploadSubmitted(uploadID string) (bool, error) {
+	if s.Store == nil {
+		return false, fmt.Errorf("submitter is not configured")
+	}
+	return s.Store.UploadSubmitted(uploadID)
+}
+
+func (s *AsyncSubmitter) submit(data []byte, userID, taskID string, save func([]byte, string, string) (string, error)) error {
 	if s.Store == nil || s.Processor == nil {
 		return fmt.Errorf("submitter is not configured")
 	}
@@ -154,11 +170,11 @@ func (s *AsyncSubmitter) Submit(_ context.Context, data []byte, userID, taskID s
 	if s.closed {
 		return ErrSubmitterClosed
 	}
-	// Hold the queue lock through SaveRaw so Close cannot accept a file that
-	// would never be scheduled for processing.
+	// Hold the queue lock through persistence so Close cannot leave an
+	// accepted archive unscheduled.
 	playerID := normalizeUserID(userID)
-	path, err := s.Store.SaveRaw(data, playerID, taskID)
-	if err != nil {
+	path, err := save(data, playerID, taskID)
+	if err != nil || path == "" {
 		return err
 	}
 	s.pending = append(s.pending, queuedJob{path: path, userID: playerID, taskID: taskID})
@@ -170,14 +186,68 @@ func (s *AsyncSubmitter) Submit(_ context.Context, data []byte, userID, taskID s
 	return nil
 }
 
+// Recover queues archives that a previous process accepted but did not finish
+// processing, oldest first. Call it once at startup before serving requests.
+func (s *AsyncSubmitter) Recover() (int, error) {
+	if s.Store == nil || s.Processor == nil {
+		return 0, fmt.Errorf("submitter is not configured")
+	}
+	pending, err := s.Store.PendingRaw()
+	if err != nil {
+		return 0, err
+	}
+	s.startWorkers()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, ErrSubmitterClosed
+	}
+	queued := make(map[string]struct{}, len(s.pending))
+	for _, job := range s.pending {
+		queued[job.path] = struct{}{}
+	}
+	recovered := 0
+	for _, archive := range pending {
+		if _, exists := queued[archive.Path]; exists {
+			continue
+		}
+		s.pending = append(s.pending, queuedJob{path: archive.Path, userID: archive.UserID, taskID: archive.TaskID})
+		recovered++
+	}
+	if recovered > 0 {
+		s.ready.Broadcast()
+		if s.Logf != nil {
+			s.Logf("[QUEUE] recovered %d unprocessed archive(s) from a previous run", recovered)
+		}
+	}
+	return recovered, nil
+}
+
 // Close stops accepting work and waits for already accepted jobs to finish.
 func (s *AsyncSubmitter) Close() {
+	_ = s.CloseContext(context.Background())
+}
+
+// CloseContext stops accepting work and waits for accepted jobs until ctx is
+// done. Jobs that have not finished by then stay in the store's pending
+// directory and are picked up by Recover on the next start.
+func (s *AsyncSubmitter) CloseContext(ctx context.Context) error {
 	s.startWorkers()
 	s.mu.Lock()
 	s.closed = true
 	s.ready.Broadcast()
 	s.mu.Unlock()
-	s.workersWG.Wait()
+	done := make(chan struct{})
+	go func() {
+		s.workersWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *AsyncSubmitter) startWorkers() {
@@ -221,12 +291,31 @@ func (s *AsyncSubmitter) nextJob() (queuedJob, bool) {
 }
 
 func (s *AsyncSubmitter) processJob(job queuedJob) {
-	defer func() {
-		if recovered := recover(); recovered != nil && s.Logf != nil {
-			s.Logf("[ERROR] processing panicked task=%s", job.taskID)
-		}
-	}()
-	if err := s.Processor.Process(context.Background(), job.path, job.userID, job.taskID); err != nil && s.Logf != nil {
+	err := s.runProcessor(job)
+	if err != nil && !errors.Is(err, errProcessorPanicked) && s.Logf != nil {
 		s.Logf("[ERROR] processing failed task=%s: %v", job.taskID, err)
 	}
+	if errors.Is(err, mapper.ErrAESNotConfigured) {
+		// This is a local configuration error. Keep the archive recoverable
+		// when the service restarts with valid AES parameters.
+		return
+	}
+	// Finalize successful and terminally failed archives.
+	if finishErr := s.Store.FinishRaw(job.path, err == nil); finishErr != nil && s.Logf != nil {
+		s.Logf("[ERROR] could not finalize raw archive task=%s: %v", job.taskID, finishErr)
+	}
+}
+
+var errProcessorPanicked = errors.New("processing panicked")
+
+func (s *AsyncSubmitter) runProcessor(job queuedJob) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = errProcessorPanicked
+			if s.Logf != nil {
+				s.Logf("[ERROR] processing panicked task=%s", job.taskID)
+			}
+		}
+	}()
+	return s.Processor.Process(context.Background(), job.path, job.userID, job.taskID)
 }

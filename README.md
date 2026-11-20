@@ -62,6 +62,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark images | Public base URL for archived map images |
 | `FALLBACK_IMAGE_BASE` | Optional | Image-base fallback when `BARK_IMAGE_BASE` is unset |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | Optional | Reqable report-endpoint settings |
+| `UPLOAD_TOKEN` | Optional | When set, `/uploadMySekai` requires a matching `X-Upload-Token` header |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | Optional | Override the default repository directories |
 
 ### 3. Path A — Telegram only
@@ -177,6 +178,7 @@ A compiled binary can run outside the checkout with `--root /path/to/MySekaiMapp
 | `X-Chunk-Index` | Yes | Zero-based chunk index |
 | `X-Total-Chunks` | Yes | Total chunk count, from 1 through 10 |
 | `X-Original-Url` | No | Original game URL; `/user/<id>` supplies the player route |
+| `X-Upload-Token` | When `UPLOAD_TOKEN` is set | Must equal `UPLOAD_TOKEN`; otherwise `401 Unauthorized` |
 | `X-Script-Version` | No | Accepted for capture-client compatibility and ignored by the service |
 
 The encrypted archive, each chunk, and the merged upload are limited to 1 MiB. A successfully accepted request returns plain-text `OK`; rendering and notification continue in the background.
@@ -217,6 +219,8 @@ rm -f /tmp/ms_chunk_*
 ```
 
 Common responses are `200 OK` for an accepted upload, `400 Bad Request` for invalid identifiers or chunk ranges, `413 Payload Too Large` for a size limit, and `422 Unprocessable Entity` for missing or non-integer required upload headers.
+
+A merged upload that does not decrypt to a MySekai archive is rejected with `422 Unprocessable Entity` and is not stored. Accepted archives wait in `data/raw_mysekai/pending/` until processed and are resumed automatically after a restart; they then move to `data/raw_mysekai/`, or to `data/raw_mysekai/failed/` (which keeps the latest 20). Incomplete chunk uploads are removed after one idle hour.
 
 ## Reqable Report Server
 

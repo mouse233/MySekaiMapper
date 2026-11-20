@@ -10,6 +10,7 @@
 | `X-Chunk-Index` | 是 | 從零開始的分塊索引 |
 | `X-Total-Chunks` | 是 | 分塊總數，範圍從 1 到 10 |
 | `X-Original-Url` | 否 | 原始遊戲 URL；`/user/<id>` 可提供玩家路由資訊 |
+| `X-Upload-Token` | 設定 `UPLOAD_TOKEN` 時必填 | 必須等於 `UPLOAD_TOKEN`，否則回傳 `401 Unauthorized` |
 | `X-Script-Version` | 否 | 為相容擷取用戶端而接受，服務會忽略此值 |
 
 加密封存檔、每個分塊與合併後的上傳皆限制為 1 MiB。成功接受的請求會回傳純文字 `OK`；渲染與通知則在背景繼續執行。
@@ -50,3 +51,5 @@ rm -f /tmp/ms_chunk_*
 ```
 
 常見回應包括：已接受上傳時的 `200 OK`、識別碼或分塊範圍無效時的 `400 Bad Request`、超過大小限制時的 `413 Payload Too Large`，以及缺少必要上傳標頭或其值非整數時的 `422 Unprocessable Entity`。
+
+合併後無法解密為 MySekai 存檔的上傳會回傳 `422 Unprocessable Entity`，且不會寫入磁碟。已接受的存檔在處理前保存在 `data/raw_mysekai/pending/`，服務重新啟動後會自動繼續處理；成功後移至 `data/raw_mysekai/`，失敗的移至 `data/raw_mysekai/failed/`（僅保留最近 20 個）。未完成的分塊上傳閒置一小時後會被清除。

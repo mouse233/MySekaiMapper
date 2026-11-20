@@ -33,6 +33,7 @@ go build -o bin/mysekaimapper ./cmd/mysekaimapper
 | `BARK_IMAGE_BASE` | Bark 图片 | 已归档地图图片的公开基础 URL |
 | `FALLBACK_IMAGE_BASE` | 可选 | 未设置 `BARK_IMAGE_BASE` 时使用的图片基础 URL |
 | `REPORT_ENABLED`, `REPORT_PATH`, `REPORT_MAX_SIZE`, `REPORT_TOKEN` | 可选 | Reqable 上报端点设置 |
+| `UPLOAD_TOKEN` | 可选 | 设置后，`/uploadMySekai` 要求请求头 `X-Upload-Token` 与之匹配 |
 | `MYSK_ASSETS_DIR`, `MYSK_CONFIG_DIR`, `MYSK_DATA_DIR` | 可选 | 覆盖仓库默认目录 |
 
 ### 3. 路径 A — 仅使用 Telegram

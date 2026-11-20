@@ -10,6 +10,7 @@
 | `X-Chunk-Index` | 예 | 0부터 시작하는 청크 인덱스 |
 | `X-Total-Chunks` | 예 | 1에서 10 사이의 전체 청크 수 |
 | `X-Original-Url` | 아니요 | 원본 게임 URL이며, `/user/<id>`로 플레이어 라우트를 판별 |
+| `X-Upload-Token` | `UPLOAD_TOKEN` 설정 시 필수 | `UPLOAD_TOKEN`과 같아야 하며, 다르면 `401 Unauthorized` |
 | `X-Script-Version` | 아니요 | 캡처 클라이언트 호환성을 위해 허용되며 서비스에서는 무시 |
 
 암호화된 아카이브, 각 청크 및 병합된 업로드의 크기는 모두 1 MiB로 제한됩니다. 요청이 성공적으로 수락되면 일반 텍스트 `OK`를 반환하며, 렌더링과 알림은 백그라운드에서 계속됩니다.
@@ -50,3 +51,5 @@ rm -f /tmp/ms_chunk_*
 ```
 
 일반적인 응답은 수락된 업로드에 대한 `200 OK`, 잘못된 식별자 또는 청크 범위에 대한 `400 Bad Request`, 크기 제한에 대한 `413 Payload Too Large`, 필수 업로드 헤더가 없거나 정수가 아닌 경우에 대한 `422 Unprocessable Entity`입니다.
+
+병합 후 MySekai 아카이브로 복호화되지 않는 업로드는 `422 Unprocessable Entity`로 거부되며 저장되지 않습니다. 수락된 아카이브는 처리될 때까지 `data/raw_mysekai/pending/`에 보관되고, 재시작 후 자동으로 처리가 재개됩니다. 이후 성공한 아카이브는 `data/raw_mysekai/`로, 실패한 아카이브는 `data/raw_mysekai/failed/`(최근 20개만 보관)로 이동합니다. 완료되지 않은 청크 업로드는 1시간 동안 활동이 없으면 삭제됩니다.

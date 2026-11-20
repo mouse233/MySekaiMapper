@@ -36,6 +36,9 @@ type Config struct {
 	ReportPath    string
 	ReportMaxSize int64
 	ReportToken   string
+	// UploadToken, when set, must match the X-Upload-Token request header on
+	// every /uploadMySekai request.
+	UploadToken string
 }
 
 func ConfigFromSettings(settings service.Settings) Config {
@@ -47,6 +50,7 @@ func ConfigFromSettings(settings service.Settings) Config {
 		ReportPath:    settings.ReportPath,
 		ReportMaxSize: settings.ReportMaxSize,
 		ReportToken:   settings.ReportToken,
+		UploadToken:   settings.UploadToken,
 	}
 }
 
@@ -54,11 +58,12 @@ func ConfigFromSettings(settings service.Settings) Config {
 // processing pipeline. It is small enough to substitute in HTTP contract tests.
 type Submitter interface {
 	Submit(ctx context.Context, data []byte, userID, taskID string) error
+	SubmitUpload(ctx context.Context, data []byte, userID, uploadID string) error
+	UploadSubmitted(uploadID string) (bool, error)
 }
 
 type chunkAdder interface {
 	Add(uploadID string, index, total int, data []byte) ([]byte, bool, error)
-	MarkSubmitted(uploadID string) error
 	Complete(uploadID string) error
 }
 
@@ -69,6 +74,9 @@ type Handler struct {
 	submitter Submitter
 	newTaskID func() (string, error)
 	uploadMu  sync.Mutex
+	// validateArchive checks that a merged upload decrypts to a MySekai
+	// archive before anything is persisted for processing.
+	validateArchive func([]byte) (bool, error)
 
 	// Logf receives operational messages without archive bodies, URLs, or tokens.
 	// It is optional so library users and tests can stay silent.
@@ -94,7 +102,13 @@ func New(config Config, chunks chunkAdder, submitter Submitter) (*Handler, error
 	if chunks == nil || submitter == nil {
 		return nil, fmt.Errorf("chunk store and submitter are required")
 	}
-	return &Handler{config: config, chunks: chunks, submitter: submitter, newTaskID: randomTaskID}, nil
+	return &Handler{
+		config:          config,
+		chunks:          chunks,
+		submitter:       submitter,
+		newTaskID:       randomTaskID,
+		validateArchive: mapper.LooksLikeArchive,
+	}, nil
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -108,6 +122,10 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 	if request.Method != http.MethodPost {
 		response.Header().Set("Allow", http.MethodPost)
 		http.Error(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.config.UploadToken != "" && subtle.ConstantTimeCompare([]byte(request.Header.Get("X-Upload-Token")), []byte(h.config.UploadToken)) != 1 {
+		http.Error(response, "Invalid upload token", http.StatusUnauthorized)
 		return
 	}
 	if !hasHeader(request, "X-Upload-Id") || !hasHeader(request, "X-Chunk-Index") || !hasHeader(request, "X-Total-Chunks") {
@@ -140,10 +158,19 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	h.logf("[UPLOAD] received task=%s player_id=%s chunk=%d/%d bytes=%d", uploadID, playerID, index+1, total, len(body))
-	// Serialize the short merge/submit handoff so simultaneous retries for the
-	// same upload ID cannot launch duplicate background jobs before marking it.
+	// Serialize receipt checks, chunk writes, and cleanup.
 	h.uploadMu.Lock()
 	defer h.uploadMu.Unlock()
+	submitted, err := h.submitter.UploadSubmitted(uploadID)
+	if err != nil {
+		http.Error(response, "Unable to check completed upload", http.StatusInternalServerError)
+		return
+	}
+	if submitted {
+		_ = h.chunks.Complete(uploadID)
+		writePlain(response, http.StatusOK, "OK")
+		return
+	}
 	merged, complete, err := h.chunks.Add(uploadID, index, total, body)
 	if errors.Is(err, service.ErrChunkAlreadySubmitted) {
 		// The raw archive was already saved; retry only the private cleanup and
@@ -157,19 +184,28 @@ func (h *Handler) uploadChunk(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	if complete {
-		if err := h.submitter.Submit(request.Context(), merged, playerID, uploadID); err != nil {
+		// Validate before persisting, like the report endpoint does, so
+		// arbitrary bytes are never written to the raw archive directory.
+		valid, validationErr := h.validateArchive(merged)
+		if errors.Is(validationErr, mapper.ErrAESNotConfigured) {
+			// Keep the chunks: the upload becomes valid once keys are configured.
+			http.Error(response, "AES keys not configured", http.StatusInternalServerError)
+			return
+		}
+		if validationErr != nil || !valid {
+			_ = h.chunks.Complete(uploadID)
+			h.logf("[UPLOAD] rejected task=%s player_id=%s: not a MySekai archive", uploadID, playerID)
+			http.Error(response, "Invalid MySekai archive", http.StatusUnprocessableEntity)
+			return
+		}
+		if err := h.submitter.SubmitUpload(request.Context(), merged, playerID, uploadID); err != nil {
 			// Keep chunks on disk so a retry of the last chunk can submit the
 			// same merged archive after a transient storage failure.
 			writeSubmitError(response, err)
 			return
 		}
 		h.logf("[UPLOAD] accepted task=%s player_id=%s bytes=%d", uploadID, playerID, len(merged))
-		if err := h.chunks.MarkSubmitted(uploadID); err != nil {
-			http.Error(response, "Unable to finalize completed upload", http.StatusInternalServerError)
-			return
-		}
-		// Cleanup is best-effort: the archive is already safely persisted and the
-		// submitted marker suppresses duplicate work if the client retries.
+		// The durable queue has already recorded the upload ID with the archive.
 		_ = h.chunks.Complete(uploadID)
 	}
 	writePlain(response, http.StatusOK, "OK")
@@ -287,6 +323,8 @@ func writeChunkError(response http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrChunkTotalTooLarge):
 		http.Error(response, "Total file too large", http.StatusRequestEntityTooLarge)
+	case errors.Is(err, service.ErrChunkStoreFull):
+		http.Error(response, "Temporary upload storage is full", http.StatusServiceUnavailable)
 	case errors.Is(err, service.ErrInvalidChunk), errors.Is(err, service.ErrChunkTotalMismatch):
 		http.Error(response, "Invalid chunk parameters", http.StatusBadRequest)
 	default:
